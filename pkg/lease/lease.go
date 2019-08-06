@@ -26,7 +26,7 @@ type Lease struct {
 	Expires int64
 
 	// Address holds the address that has been leased to the client
-	Address net.IPAddr
+	Address net.IP
 }
 
 // ExpiredAt returns true if the lease was or will be expired at t
@@ -46,4 +46,16 @@ func (l *Lease) String() string {
 		suffix = "; expired"
 	}
 	return fmt.Sprintf("%s (client=%s%s)", l.Address.String(), l.HwAddr, suffix)
+}
+
+// Clone returns a deep copy of the lease
+func (l *Lease) Clone() *Lease {
+	return &Lease{
+		Client: {
+			HwAddr: append(net.HardwareAddr{}, l.Client.HwAddr...);
+			Hostname: l.Client.Hostname,
+		},
+		Expires: l.Expires,
+		Address: append(net.IP{}, l.Address...),
+	}
 }
