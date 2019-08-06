@@ -2,6 +2,7 @@ package lease
 
 import (
 	"net"
+	"sync"
 	"time"
 )
 
@@ -51,16 +52,22 @@ type Provider interface {
 
 // NewProvider returns a new IP address lease provider
 func NewProvider(network net.IPNet, store Storager) Provider {
-	return &provider{
-		storager: store,
-		network:  network,
-	}
+	/*
+		return &provider{
+			storager: store,
+			network:  network,
+		}
+	*/
+	return nil
 }
 
 type provider struct {
-	network net.IPNet
+	network  net.IPNet // the IP network served by the lease provider
+	storager Storager  // used to persist leases
 
-	storager Storager
+	mu     *sync.RWMutex // protects leases and ranges
+	ranges []*IPRange    // List of IP ranges leased by the provider
+
 }
 
 func (p *provider) Network() net.IPNet {
