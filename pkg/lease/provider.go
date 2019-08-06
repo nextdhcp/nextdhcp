@@ -62,12 +62,10 @@ func NewProvider(network net.IPNet, store Storager) Provider {
 }
 
 type provider struct {
-	network  net.IPNet // the IP network served by the lease provider
-	storager Storager  // used to persist leases
-
-	mu     *sync.RWMutex // protects leases and ranges
-	ranges []*IPRange    // List of IP ranges leased by the provider
-
+	network  net.IPNet     // the IP network served by the lease provider
+	storager Storager      // used to persist leases
+	mu       *sync.RWMutex // protects leases and ranges
+	ranges   []*IPRange    // List of IP ranges leased by the provider
 }
 
 func (p *provider) Network() net.IPNet {
