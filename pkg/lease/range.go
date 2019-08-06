@@ -186,7 +186,7 @@ func deleteRange(delete *IPRange, ranges []*IPRange) []*IPRange {
 
 		// do an early exit if no more matching range
 		// can exist
-		if deleteStart < currStart {
+		if deleteEnd < currStart {
 			break
 		}
 
@@ -199,47 +199,29 @@ func deleteRange(delete *IPRange, ranges []*IPRange) []*IPRange {
 			continue
 		}
 
-		// if true, we need to cut out a sub-range of the current one
-		if startInRange && endInRange {
-			first := &IPRange{
-				Start: ranges[i].Start,
-				End:   prevIP(delete.Start), // - 1
-			}
-
-			last := &IPRange{
-				Start: nextIP(delete.End), // + 1
-				End:   ranges[i].End,
-			}
-
-			if first.Len() > 0 {
-				stack = append(stack, first)
-			}
-
-			if last.Len() > 0 {
-				stack = append(stack, last)
-			}
-
-			continue
-		}
-
 		// if true, cut down the end IP of the current range
 		if startInRange {
-			stack = append(stack, &IPRange{
+			r := &IPRange{
 				Start: ranges[i].Start,
 				End:   prevIP(delete.Start), // - 1
-			})
-			continue
+			}
+
+			if r.Len() > 0 {
+				stack = append(stack, r)
+			}
 		}
 
 		if endInRange {
-			stack = append(stack, &IPRange{
+			r := &IPRange{
 				Start: nextIP(delete.End), // + 1
 				End:   ranges[i].End,
-			})
-			continue
+			}
+
+			if r.Len() > 0 {
+				stack = append(stack, r)
+			}
 		}
 
-		panic("Universe is buggy, no matter if we panic or not ...")
 	}
 
 	return stack

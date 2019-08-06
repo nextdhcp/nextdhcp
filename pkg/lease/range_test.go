@@ -188,6 +188,7 @@ func Test_deleteRange(t *testing.T) {
 		D *IPRange
 		E []*IPRange
 	}{
+		// #0
 		{
 			I: []*IPRange{
 				{
@@ -203,6 +204,50 @@ func Test_deleteRange(t *testing.T) {
 				{
 					Start: net.ParseIP("10.8.0.1").To4(),
 					End:   net.ParseIP("10.8.0.9").To4(),
+				},
+			},
+		},
+
+		// #1
+		{
+			I: []*IPRange{
+				{
+					Start: net.ParseIP("10.8.0.1").To4(),
+					End:   net.ParseIP("10.8.0.100").To4(),
+				},
+			},
+			D: &IPRange{
+				Start: net.ParseIP("10.8.0.10").To4(),
+				End:   net.ParseIP("10.8.0.20").To4(),
+			},
+			E: []*IPRange{
+				{
+					Start: net.ParseIP("10.8.0.1").To4(),
+					End:   net.ParseIP("10.8.0.9").To4(),
+				},
+				{
+					Start: net.ParseIP("10.8.0.21").To4(),
+					End:   net.ParseIP("10.8.0.100").To4(),
+				},
+			},
+		},
+
+		// #2
+		{
+			I: []*IPRange{
+				{
+					Start: net.ParseIP("10.8.0.10").To4(),
+					End:   net.ParseIP("10.8.0.100").To4(),
+				},
+			},
+			D: &IPRange{
+				Start: net.ParseIP("10.8.0.1").To4(),
+				End:   net.ParseIP("10.8.0.20").To4(),
+			},
+			E: []*IPRange{
+				{
+					Start: net.ParseIP("10.8.0.21").To4(),
+					End:   net.ParseIP("10.8.0.100").To4(),
 				},
 			},
 		},
