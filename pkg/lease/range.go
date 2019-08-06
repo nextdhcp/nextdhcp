@@ -135,6 +135,18 @@ func (ranges IPRanges) Swap(i, j int) {
 	ranges[j] = t
 }
 
+// Contains reports whether on of the IP ranges contains the
+// IP in question
+func (ranges IPRanges) Contains(ip net.IP) bool {
+	for _, r := range ranges {
+		if r.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func mergeConsecutiveRanges(ranges []*IPRange) []*IPRange {
 	if len(ranges) == 0 {
 		return nil
