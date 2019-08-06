@@ -11,7 +11,7 @@ home = subnet("10.8.254.0/32", {
 
 declare_option("architecture", 93, TYPE_UINT16)
 
-return function(request)
+local function handleRequest(request)
     local opts = {}
 
     if request.architecture == 0x0007 then
@@ -19,16 +19,13 @@ return function(request)
     else
         opts.filename = "/grub/i386-pc/core.0"
     end
-    
+
     return assign(home, opts)
-    --[[
-
-    return {
-        address =  "10.8.1.100"
-        options = {
-            ...
-        }
-    }
-
-    ]]
 end
+
+return {
+    on_discover = function()
+
+    end,
+    on_request = handleRequest,
+}
