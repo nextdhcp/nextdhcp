@@ -161,6 +161,13 @@ func (p *provider) Lease(ip net.IP, cli Client, leaseTime time.Duration) bool {
 		Expires: time.Now().Add(leaseTime).Unix(),
 	}
 
+	if p.storager != nil {
+		if err := p.storager.Acquire(lease); err != nil {
+			log.Printf("failed to acquire client lease: %s", err.Error())
+			return false
+		}
+	}
+
 	p.leasesByIP[key] = lease
 	p.leasesByHW[cli.HwAddr.String()] = lease
 
