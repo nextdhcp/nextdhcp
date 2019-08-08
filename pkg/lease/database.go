@@ -146,6 +146,7 @@ func (db *database) Reserve(ctx context.Context, ip net.IP, cli Client) error {
 		if l.HwAddr.String() == cli.HwAddr.String() {
 			return nil // already leased to the client
 		}
+
 		return errors.New("address already leased")
 	}
 
@@ -193,7 +194,21 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli Client, leaseTime 
 
 	if r, ok := db.reservedAddresses[key]; ok {
 		if r.HwAddr.String() == cli.HwAddr.String() {
-			// TODO(ppacher) delete reservation and create lease
+			if ip.String() != r.IP.String() {
+				return errors.New("reservation IP address missmatch")
+			}
+
+			delete(db.reservedAddresses, key)
+			delete(db.reservedAddressesByClient, r.HwAddr.String())
+
+			db.leasedAddresses[key] = Lease{
+				Client:  cli,
+				Address: ip,
+				Expires: time.Now().Add(leaseTime).Unix(), // TODO(ppacher) move to time.Time rather than int32
+			}
+			db.leasedAddressesByClient[cli.HwAddr.String()] = key
+
+			return nil
 		} else {
 			return errors.New("IP address reserved for a different client")
 		}
@@ -244,6 +259,7 @@ func (db *database) ReleaseClient(ctx context.Context, cli *Client) error {
 	if ok {
 		delete(db.leasedAddresses, idx)
 		delete(db.leasedAddressesByClient, key)
+
 		return nil
 	}
 
@@ -266,6 +282,7 @@ func (db *database) reservedAddrByCli(cli Client) (ReservedAddress, bool) {
 	}
 
 	r, ok := db.reservedAddresses[ip]
+
 	return r, ok
 }
 
@@ -277,5 +294,6 @@ func (db *database) leaseByCli(cli Client) (Lease, bool) {
 	}
 
 	l, ok := db.leasedAddresses[ip]
+
 	return l, ok
 }
