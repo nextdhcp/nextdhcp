@@ -23,7 +23,7 @@ type Storager interface {
 // from a list of IP ranges (start IP and end IP)
 type Provider interface {
 	// Network is the network that the provider manages
-	Network() net.IPNet
+	Network() *net.IPNet
 
 	// All returns all leases
 	All() []*Lease
@@ -33,9 +33,12 @@ type Provider interface {
 	// lease has expired
 	CanLease(net.IP, Client) bool
 
-	// Find tries to find a lease for the client. If the client already has a lease it will
-	// be returned even if it has been expired
+	// Find searches for an existing client lease
 	Find(Client) (*Lease, bool)
+
+	// CreateLease allocates a new IP lease for the provided client. If the client already has
+	// an active lease it will be renewed
+	CreateLease(cli Client, leaseTime time.Duration) (*Lease, bool)
 
 	// Lease IP to client for leaseTime
 	Lease(IP net.IP, client Client, leaseTime time.Duration) bool
@@ -58,23 +61,25 @@ type Provider interface {
 }
 
 // NewProvider returns a new IP address lease provider
-func NewProvider(network net.IPNet, store Storager) Provider {
+func NewProvider(network *net.IPNet, store Storager) Provider {
 	return &provider{
-		storager: store,
-		network:  network,
+		storager:   store,
+		network:    network,
+		leasesByIP: make(map[uint32]*Lease),
+		leasesByHW: make(map[string]*Lease),
 	}
 }
 
 type provider struct {
-	network    net.IPNet     // the IP network served by the lease provider
-	storager   Storager      // used to persist leases
-	mu         *sync.RWMutex // protects leases and ranges
-	ranges     []*IPRange    // List of IP ranges leased by the provider
+	network    *net.IPNet   // the IP network served by the lease provider
+	storager   Storager     // used to persist leases
+	mu         sync.RWMutex // protects leases and ranges
+	ranges     []*IPRange   // List of IP ranges leased by the provider
 	leasesByIP map[uint32]*Lease
 	leasesByHW map[string]*Lease
 }
 
-func (p *provider) Network() net.IPNet {
+func (p *provider) Network() *net.IPNet {
 	return p.network
 }
 
@@ -104,27 +109,27 @@ func (p *provider) CanLease(ip net.IP, cli Client) bool {
 	if !p.network.Contains(ip) {
 		return false
 	}
-
-	ipv4, ok := IPToInt(ip)
-	if !ok {
-		return false
-	}
-
 	// next we need to check if there's already a valid lease
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	lease, ok := p.leasesByIP[ipv4]
-	if ok {
-		if lease.Client.HwAddr.String() == cli.HwAddr.String() {
-			return true
-		}
+	return p.canLease(ip, &cli)
+}
 
+func (p *provider) canLease(ip net.IP, cli *Client) bool {
+	b, ok := IPToInt(ip)
+	if !ok {
 		return false
 	}
 
-	// seems like no one is using this lease
-	// TODO(ppacher): should we check the lease against the list of valid ranges?
+	if l, ok := p.leasesByIP[b]; ok {
+		if cli != nil && cli.HwAddr.String() == l.HwAddr.String() {
+			return true
+		}
+		// IP address already assiged
+		return false
+	}
+
 	return true
 }
 
@@ -140,19 +145,62 @@ func (p *provider) Find(cli Client) (*Lease, bool) {
 	return nil, false
 }
 
-func (p *provider) Lease(ip net.IP, cli Client, leaseTime time.Duration) bool {
-	key, ok := IPToInt(ip)
-	if !ok {
-		return false
+func (p *provider) CreateLease(cli Client, leaseTime time.Duration) (*Lease, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	lease, ok := p.leasesByHW[cli.HwAddr.String()]
+	if ok {
+		// we do have an active lease. Update the lease time if it expired
+		if lease.Expired() {
+			lease, ok := p.createLease(lease.Address, cli, leaseTime)
+			if ok {
+				return lease, ok
+			}
+
+			// we failed to re-lease the same address so fallthrough and create
+			// a completely new one
+		} else {
+			// lease is still valid so allow the client to continue using it
+			return lease, true
+		}
 	}
 
+	// client does not have a lease. Try to find a new one
+	for _, r := range p.ranges {
+		for i := 0; i < r.Len(); i++ {
+			ip := r.ByIdx(i)
+			if p.canLease(ip, &cli) {
+				lease, ok := p.createLease(ip, cli, leaseTime)
+				if ok {
+					return lease, ok
+				}
+
+				// if we failed to createLease the try the next one
+			}
+		}
+	}
+
+	return nil, false
+}
+
+func (p *provider) Lease(ip net.IP, cli Client, leaseTime time.Duration) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if l, ok := p.leasesByIP[key]; ok {
-		if l.HwAddr.String() != cli.HwAddr.String() {
-			return false
-		}
+	if !p.canLease(ip, &cli) {
+		return false
+	}
+
+	_, leased := p.createLease(ip, cli, leaseTime)
+
+	return leased
+}
+
+func (p *provider) createLease(ip net.IP, cli Client, leaseTime time.Duration) (*Lease, bool) {
+	key, ok := IPToInt(ip)
+	if !ok {
+		return nil, false
 	}
 
 	lease := &Lease{
@@ -164,14 +212,14 @@ func (p *provider) Lease(ip net.IP, cli Client, leaseTime time.Duration) bool {
 	if p.storager != nil {
 		if err := p.storager.Acquire(lease); err != nil {
 			log.Printf("failed to acquire client lease: %s", err.Error())
-			return false
+			return nil, false
 		}
 	}
 
 	p.leasesByIP[key] = lease
 	p.leasesByHW[cli.HwAddr.String()] = lease
 
-	return true
+	return lease, true
 }
 
 func (p *provider) Release(l *Lease) bool {

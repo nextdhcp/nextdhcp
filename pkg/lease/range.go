@@ -33,6 +33,15 @@ func (r *IPRange) Len() int {
 	return int(end4 - start4)
 }
 
+func (r *IPRange) ByIdx(i int) net.IP {
+	start, ok := IPToInt(r.Start)
+	if !ok {
+		return nil
+	}
+
+	return intToIP(start + uint32(i))
+}
+
 // Contains checks if ip is part of the range
 func (r *IPRange) Contains(ip net.IP) bool {
 	ipV4 := ip.To4()
@@ -63,6 +72,12 @@ func IPToInt(ip net.IP) (uint32, bool) {
 	}
 
 	return binary.BigEndian.Uint32(v4), true
+}
+
+func intToIP(i uint32) net.IP {
+	r := make([]byte, 4)
+	binary.BigEndian.PutUint32(r, i)
+	return net.IPv4(r[0], r[1], r[2], r[3]).To4()
 }
 
 func nextIP(ip net.IP) net.IP {

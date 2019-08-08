@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
+	"net"
 
 	"github.com/ppacher/dhcp-ng/pkg/server"
 	"github.com/spf13/cobra"
@@ -15,7 +16,18 @@ var (
 // DHCPv4Server is the root cobra command for dhcp-ng
 var DHCPv4Server = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
-		s := server.New(server.WithListen(flagListenAddresses...))
+		addresses := make([]net.IP, len(flagListenAddresses))
+
+		for i, a := range flagListenAddresses {
+			ip := net.ParseIP(a)
+			if ip == nil {
+				log.Fatalf("Failed to parse IP: %s", a)
+			}
+
+			addresses[i] = ip
+		}
+
+		s := server.New(server.WithListen(addresses...))
 
 		log.Printf("Listening on %s", flagListenAddresses)
 		if err := s.Start(context.Background()); err != nil {

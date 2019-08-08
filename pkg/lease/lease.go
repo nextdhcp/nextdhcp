@@ -43,16 +43,18 @@ func (l *Lease) Expired() bool {
 func (l *Lease) String() string {
 	suffix := ""
 	if l.Expired() {
-		suffix = "; expired"
+		suffix = "expired"
+	} else {
+		suffix = fmt.Sprintf("expires in %s", time.Unix(l.Expires, 0).Sub(time.Now()))
 	}
-	return fmt.Sprintf("%s (client=%s%s)", l.Address.String(), l.HwAddr, suffix)
+	return fmt.Sprintf("%s (%s; %s)", l.Address.String(), l.HwAddr, suffix)
 }
 
 // Clone returns a deep copy of the lease
 func (l *Lease) Clone() *Lease {
 	return &Lease{
-		Client: {
-			HwAddr: append(net.HardwareAddr{}, l.Client.HwAddr...);
+		Client: Client{
+			HwAddr:   append(net.HardwareAddr{}, l.Client.HwAddr...),
 			Hostname: l.Client.Hostname,
 		},
 		Expires: l.Expires,

@@ -3,7 +3,9 @@ module github.com/ppacher/dhcp-ng
 go 1.12
 
 require (
+	github.com/google/gopacket v1.1.17
 	github.com/insomniacslk/dhcp v0.0.0-20190729073401-6d0d21cc6337
+	github.com/mdlayher/raw v0.0.0-20190606144222-a54781e5f38f
 	github.com/spf13/cobra v0.0.5
 	github.com/stretchr/testify v1.2.2
 	github.com/u-root/u-root v5.0.0+incompatible // indirect
