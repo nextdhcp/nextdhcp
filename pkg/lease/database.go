@@ -173,7 +173,33 @@ func (db *database) Reserve(ctx context.Context, ip net.IP, cli Client) error {
 }
 
 func (db *database) Lease(ctx context.Context, ip net.IP, cli Client, leaseTime time.Duration) error {
-	return errors.New("not yet implemented")
+	if !db.l.TryLock(ctx) {
+		return ctx.Err()
+	}
+	defer db.l.Unlock()
+
+	key, ok := IPToInt(ip)
+	if !ok {
+		return errors.New("invalid IP address")
+	}
+
+	if l, ok := db.leasedAddresses[key]; ok {
+		if l.HwAddr.String() == cli.HwAddr.String() {
+			// TODO(ppacher) renew IP lease
+			return nil
+		}
+		return errors.New("IP address in use")
+	}
+
+	if r, ok := db.reservedAddresses[key]; ok {
+		if r.HwAddr.String() == cli.HwAddr.String() {
+			// TODO(ppacher) delete reservation and create lease
+		} else {
+			return errors.New("IP address reserved for a different client")
+		}
+	}
+
+	return errors.New("no reservation for IP address available")
 }
 
 func (db *database) Release(ctx context.Context, ip net.IP) error {
