@@ -55,10 +55,10 @@ type Database interface {
 
 	// Release releases a previous client IP address lease. If no such lease exists the list
 	// of reserved IP addresses is checked and any reservation for the client is removed
-	Release(net.IP) error
+	Release(context.Context, net.IP) error
 
 	// ReleaseClient releases all IP address leases or reservations for the given client
-	ReleaseClient(*Client) error
+	ReleaseClient(context.Context, *Client) error
 }
 
 // database implements the Database interface
@@ -176,12 +176,60 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli Client, leaseTime 
 	return errors.New("not yet implemented")
 }
 
-func (db *database) Release(ip net.IP) error {
-	return errors.New("not yet implemented")
+func (db *database) Release(ctx context.Context, ip net.IP) error {
+	if !db.l.TryLock(ctx) {
+		return ctx.Err()
+	}
+	defer db.l.Unlock()
+
+	key, ok := IPToInt(ip)
+	if !ok {
+		return errors.New("invalid IPv4 address")
+	}
+
+	lease, ok := db.leasedAddresses[key]
+	if ok {
+		delete(db.leasedAddresses, key)
+		delete(db.leasedAddressesByClient, lease.HwAddr.String())
+
+		return nil
+	}
+
+	reservation, ok := db.reservedAddresses[key]
+	if ok {
+		delete(db.reservedAddresses, key)
+		delete(db.reservedAddressesByClient, reservation.HwAddr.String())
+
+		return nil
+	}
+
+	return errors.New("unknown lease or reservation")
 }
 
-func (db *database) ReleaseClient(*Client) error {
-	return errors.New("not yet implemented")
+func (db *database) ReleaseClient(ctx context.Context, cli *Client) error {
+	if !db.l.TryLock(ctx) {
+		return ctx.Err()
+	}
+	defer db.l.Unlock()
+
+	key := cli.HwAddr.String()
+
+	idx, ok := db.leasedAddressesByClient[key]
+	if ok {
+		delete(db.leasedAddresses, idx)
+		delete(db.leasedAddressesByClient, key)
+		return nil
+	}
+
+	idx, ok = db.reservedAddressesByClient[key]
+	if ok {
+		delete(db.reservedAddresses, idx)
+		delete(db.reservedAddressesByClient, key)
+
+		return nil
+	}
+
+	return errors.New("unknown lease or reservation")
 }
 
 func (db *database) reservedAddrByCli(cli Client) (ReservedAddress, bool) {
