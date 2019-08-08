@@ -25,6 +25,10 @@ type ReservedAddress struct {
 
 // Expired checks if the reserved address has been expired at time t
 func (r ReservedAddress) Expired(t time.Time) bool {
+	if r.Expires == nil {
+		return false
+	}
+
 	return r.Expires.After(t)
 }
 
@@ -128,7 +132,44 @@ func (db *database) FindAddress(ctx context.Context, cli *Client) (net.IP, error
 }
 
 func (db *database) Reserve(ctx context.Context, ip net.IP, cli Client) error {
-	return errors.New("not yet implemented")
+	if !db.l.TryLock(ctx) {
+		return ctx.Err()
+	}
+	defer db.l.Unlock()
+
+	key, ok := IPToInt(ip)
+	if !ok {
+		return errors.New("invalid ip address")
+	}
+
+	if l, ok := db.leasedAddresses[key]; ok {
+		if l.HwAddr.String() == cli.HwAddr.String() {
+			return nil // already leased to the client
+		}
+		return errors.New("address already leased")
+	}
+
+	if r, ok := db.reservedAddresses[key]; ok {
+		if r.HwAddr.String() == cli.HwAddr.String() && !r.Expired(time.Now()) {
+			return nil // already reserved for client
+		}
+
+		// TODO(ppacher): allow if expired?
+
+		return errors.New("address already reserved")
+	}
+
+	// TODO(ppacher): should we check for existing client reservations?
+	// and maybe remove them?
+
+	db.reservedAddresses[key] = ReservedAddress{
+		Client:  cli,
+		IP:      ip,
+		Expires: nil, // TODO(ppacher): find a reasonable default
+	}
+	db.reservedAddressesByClient[cli.HwAddr.String()] = key
+
+	return nil
 }
 
 func (db *database) Lease(ctx context.Context, ip net.IP, cli Client, leaseTime time.Duration) error {
