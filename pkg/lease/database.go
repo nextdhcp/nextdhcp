@@ -72,7 +72,7 @@ type Database interface {
 type database struct {
 	network                   *net.IPNet                 // IP network served by this database
 	l                         *mutex.Mutex               // context.Context aware mutex to protect all fields below
-	ranges                    []*IPRange                 // ranges usable for address leases
+	ranges                    IPRanges                   // ranges usable for address leases
 	reservedAddresses         map[uint32]ReservedAddress // maps IP address to it's reserved address struct
 	reservedAddressesByClient map[string]uint32          // maps a net.HardwareAddr.String() to the IP address reserved
 	leasedAddresses           map[uint32]*Lease          // maps IP address to lease
@@ -143,7 +143,39 @@ func (db *database) ReservedAddresses(ctx context.Context) ([]ReservedAddress, e
 }
 
 func (db *database) FindAddress(ctx context.Context, cli *Client) (net.IP, error) {
-	return nil, errors.New("not yet implemented")
+	if !db.l.TryLock(ctx) {
+		return nil, ctx.Err()
+	}
+	defer db.l.Unlock()
+
+	l, ok := db.leaseByCli(*cli)
+	if ok {
+		return l.Address, nil
+	}
+
+	r, ok := db.reservedAddrByCli(*cli)
+	if ok {
+		return r.IP, nil
+	}
+
+	for _, ipRange := range db.ranges {
+		for i := 0; i < ipRange.Len(); i++ {
+			ip := ipRange.ByIdx(i)
+			key, _ := IPToInt(ip)
+
+			if _, ok := db.reservedAddresses[key]; ok {
+				continue
+			}
+
+			if _, ok := db.leasedAddresses[key]; ok {
+				continue
+			}
+
+			return ip, nil
+		}
+	}
+
+	return nil, errors.New("no leasable addresses")
 }
 
 func (db *database) Reserve(ctx context.Context, ip net.IP, cli Client) error {
@@ -333,16 +365,16 @@ func (db *database) reservedAddrByCli(cli Client) (ReservedAddress, bool) {
 	return r, ok
 }
 
-func (db *database) leaseByCli(cli Client) (Lease, bool) {
+func (db *database) leaseByCli(cli Client) (*Lease, bool) {
 	key := cli.HwAddr.String()
 	ip, ok := db.leasedAddressesByClient[key]
 	if !ok {
-		return Lease{}, false
+		return nil, false
 	}
 
 	l, ok := db.leasedAddresses[ip]
 
-	return *l.Clone(), ok
+	return l, ok
 }
 
 func (db *database) isLeasable(ip net.IP) bool {

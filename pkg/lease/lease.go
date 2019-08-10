@@ -45,7 +45,7 @@ func (l *Lease) String() string {
 	if l.Expired() {
 		suffix = "expired"
 	} else {
-		suffix = fmt.Sprintf("expires in %s", time.Unix(l.Expires, 0).Sub(time.Now()))
+		suffix = fmt.Sprintf("expires in %s", l.Expires.Sub(time.Now()))
 	}
 	return fmt.Sprintf("%s (%s; %s)", l.Address.String(), l.HwAddr, suffix)
 }
