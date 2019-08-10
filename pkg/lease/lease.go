@@ -23,7 +23,7 @@ type Lease struct {
 
 	// Expires holds the timestamp in seconds when the lease is going to
 	// expire
-	Expires int64
+	Expires time.Time
 
 	// Address holds the address that has been leased to the client
 	Address net.IP
@@ -31,7 +31,7 @@ type Lease struct {
 
 // ExpiredAt returns true if the lease was or will be expired at t
 func (l *Lease) ExpiredAt(t time.Time) bool {
-	return t.After(time.Unix(l.Expires, 0))
+	return t.After(l.Expires)
 }
 
 // Expired returns true if the lease has already been expired

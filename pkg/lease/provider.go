@@ -206,7 +206,7 @@ func (p *provider) createLease(ip net.IP, cli Client, leaseTime time.Duration) (
 	lease := &Lease{
 		Client:  cli,
 		Address: ip,
-		Expires: time.Now().Add(leaseTime).Unix(),
+		Expires: time.Now().Add(leaseTime),
 	}
 
 	if p.storager != nil {
