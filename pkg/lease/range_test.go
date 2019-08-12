@@ -251,6 +251,26 @@ func Test_deleteRange(t *testing.T) {
 				},
 			},
 		},
+
+		// #3
+		{
+			I: []*IPRange{
+				{
+					Start: net.IP{10, 8, 0, 10},
+					End:   net.IP{10, 8, 0, 100},
+				},
+			},
+			D: &IPRange{
+				Start: net.IP{10, 8, 0, 20},
+				End:   net.IP{10, 8, 0, 100},
+			},
+			E: []*IPRange{
+				{
+					Start: net.IP{10, 8, 0, 10},
+					End:   net.IP{10, 8, 0, 19},
+				},
+			},
+		},
 	}
 
 	for i, c := range cases {

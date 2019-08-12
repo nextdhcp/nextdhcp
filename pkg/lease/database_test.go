@@ -14,7 +14,7 @@ var (
 	ctx           = context.Background()
 	defaultClient = &Client{
 		HwAddr:   net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee},
-		Hostname: "test-client",
+		Hostname: "",
 	}
 	defaultClientMAC = "00:AA:BB:CC:DD:EE"
 )
@@ -140,4 +140,97 @@ func Test_Database_AddRange(t *testing.T) {
 
 	assert.Equal(t, net.IP{192, 168, 0, 100}.String(), db.ranges[1].Start.String())
 	assert.Equal(t, net.IP{192, 168, 0, 200}.String(), db.ranges[1].End.String())
+}
+
+func Test_Database_DeleteRange(t *testing.T) {
+	db := getTestDatabase(t)
+
+	db.DeleteRange(&IPRange{
+		Start: net.IP{192, 168, 0, 15},
+		End:   net.IP{192, 168, 0, 20},
+	})
+
+	assert.Len(t, db.ranges, 1)
+	assert.Equal(t, net.IP{192, 168, 0, 10}.String(), db.ranges[0].Start.String())
+	assert.Equal(t, net.IP{192, 168, 0, 14}.String(), db.ranges[0].End.String())
+}
+
+func Test_Database_Leases(t *testing.T) {
+	db := getTestDatabase(t)
+	addLeasedIP(db, "192.168.0.10", defaultClientMAC)
+	addLeasedIP(db, "192.168.0.11", defaultClientMAC)
+
+	assert.Len(t, db.leasedAddresses, 2)
+
+	leases, err := db.Leases(ctx)
+	assert.Nil(t, err)
+	assert.Len(t, leases, 2)
+	assert.Equal(t, leases[0].Client, *defaultClient)
+	assert.Equal(t, leases[0].Address, net.IP{192, 168, 0, 10})
+	assert.Equal(t, leases[1].Client, *defaultClient)
+	assert.Equal(t, leases[1].Address, net.IP{192, 168, 0, 11})
+
+	// Leases should return a deep clone of the lease
+	key, _ := IPToInt(net.IP{192, 168, 0, 10})
+
+	// change the first byte of net.IP
+	db.leasedAddresses[key].Address[0] = 100
+	// now the must not match anymore
+	assert.Equal(t, leases[0].Address, net.IP{192, 168, 0, 10})
+}
+
+func Test_Database_ReservedAddresses(t *testing.T) {
+	db := getTestDatabase(t)
+	addReservedIP(db, "192.168.0.10", defaultClientMAC)
+	addReservedIP(db, "192.168.0.11", defaultClientMAC)
+
+	assert.Len(t, db.reservedAddresses, 2)
+
+	leases, err := db.ReservedAddresses(ctx)
+	assert.Nil(t, err)
+	assert.Len(t, leases, 2)
+	assert.Equal(t, leases[0].Client, *defaultClient)
+	assert.Equal(t, leases[0].IP, net.IP{192, 168, 0, 10})
+	assert.Equal(t, leases[1].Client, *defaultClient)
+	assert.Equal(t, leases[1].IP, net.IP{192, 168, 0, 11})
+}
+
+func Test_Database_Reserve(t *testing.T) {
+
+	// IP address not leasable
+	db := getTestDatabase(t)
+	assert.Error(t, db.Reserve(ctx, net.IP{10, 9, 0, 100}, *defaultClient))
+	assert.Error(t, db.Reserve(ctx, net.IP{192, 168, 0, 255}, *defaultClient))
+
+	// invalid IP
+	db = getTestDatabase(t)
+	assert.Error(t, db.Reserve(ctx, net.IP{100}, *defaultClient))
+
+	// address already leased to a different client
+	db = getTestDatabase(t)
+	addLeasedIP(db, "192.168.0.10", "aa:bb:cc:dd:ee:ff")
+	assert.Error(t, db.Reserve(ctx, net.IP{192, 168, 0, 10}, *defaultClient))
+
+	// address already leased to us
+	db = getTestDatabase(t)
+	addLeasedIP(db, "192.168.0.11", defaultClientMAC)
+	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 11}, *defaultClient))
+
+	// address already reserved for another client
+	db = getTestDatabase(t)
+	addReservedIP(db, "192.168.0.12", "aa:bb:cc:dd:ee:ff")
+	assert.Error(t, db.Reserve(ctx, net.IP{192, 168, 0, 12}, *defaultClient))
+
+	// address already reserved for us
+	db = getTestDatabase(t)
+	addLeasedIP(db, "192.168.0.13", defaultClientMAC)
+	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 13}, *defaultClient))
+	// TODO(ppacher): test expiration time handling
+
+	db = getTestDatabase(t)
+	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 14}, *defaultClient))
+	key, _ := IPToInt(net.IP{192, 168, 0, 14})
+	assert.Len(t, db.reservedAddresses, 1)
+	assert.Equal(t, net.IP{192, 168, 0, 14}, db.reservedAddresses[key].IP)
+	assert.Equal(t, defaultClient.HwAddr, db.reservedAddresses[key].Client.HwAddr)
 }

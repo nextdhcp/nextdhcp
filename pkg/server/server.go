@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -25,7 +26,7 @@ type server struct {
 	listens []net.IP // array of addresses to listen
 	conns   []net.PacketConn
 
-	provider lease.Provider
+	provider lease.Database
 
 	grp *errgroup.Group
 }
@@ -42,13 +43,17 @@ func WithListen(l ...net.IP) Option {
 
 // New creates a new DHCPv4 server
 func New(opts ...Option) Server {
-	_, network, _ := net.ParseCIDR("10.8.1.0/24")
+	_, network, _ := net.ParseCIDR("10.100.0.1/24")
 	s := &server{
-		provider: lease.NewProvider(network, nil),
+		provider: lease.NewDatabase(network, nil),
 	}
 
-	s.provider.AddRange(net.ParseIP("10.8.1.100"), net.ParseIP("10.8.1.110"))
-	s.provider.AddRange(net.ParseIP("10.8.1.120"), net.ParseIP("10.8.1.130"))
+	s.provider.AddRange(
+		&lease.IPRange{
+			Start: net.ParseIP("10.100.0.100"),
+			End:   net.ParseIP("10.100.0.150"),
+		},
+	)
 
 	for _, opt := range opts {
 		opt(s)
@@ -162,43 +167,101 @@ func (s *server) serveConn(ctx context.Context, conn Listener) {
 	})
 }
 
+// https://tools.ietf.org/html/rfc2131#section-4.3.1
 func (s *server) handleDiscovery(conn Listener, peer net.Addr, msg *dhcpv4.DHCPv4) error {
-	l, ok := s.provider.CreateLease(lease.Client{
+	cli := lease.Client{
 		HwAddr:   msg.ClientHWAddr,
 		Hostname: msg.HostName(),
-	}, time.Minute)
-
-	if !ok {
-		return errors.New("failed to find a lease")
 	}
 
-	log.Printf("leased %s", l)
+	var ip net.IP
+	var err error
+
+	// TODO(ppacher): if RequestedIPAddress != nil try to reserve that one
+
+	if ip, err = s.provider.FindAddress(context.Background(), &cli); err != nil {
+		return err
+	}
+
+	log.Printf("Offering IP %s to %s", ip, cli)
+	if err := s.provider.Reserve(context.Background(), ip, cli); err != nil {
+		log.Printf("failed to reserve IP address %s for %s: %s", ip, cli, err)
+		return err
+	}
 
 	resp, err := dhcpv4.NewReplyFromRequest(msg,
-		dhcpv4.WithYourIP(net.IP{10, 100, 0, 2}),
+		dhcpv4.WithYourIP(ip),
+		dhcpv4.WithServerIP(conn.IP()),
 	)
 	if err != nil {
 		return err
 	}
 
-	resp.UpdateOption(dhcpv4.OptServerIdentifier(net.IP{10, 100, 0, 1}))
+	resp.UpdateOption(dhcpv4.OptServerIdentifier(conn.IP()))
 	resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer))
-	resp.UpdateOption(dhcpv4.OptIPAddressLeaseTime(time.Minute))
 	resp.UpdateOption(dhcpv4.OptSubnetMask(net.IPv4Mask(255, 255, 255, 0)))
-	resp.UpdateOption(dhcpv4.OptRouter(net.IP{10, 100, 0, 1}))
-	resp.UpdateOption(dhcpv4.OptDNS(net.IP{10, 100, 0, 1}))
+	resp.UpdateOption(dhcpv4.OptIPAddressLeaseTime(time.Minute))
+	//resp.UpdateOption(dhcpv4.OptRouter(conn.IP()))
+	//resp.UpdateOption(dhcpv4.OptDNS(net.IP{8, 8, 8, 8}))
 
 	if !msg.GatewayIPAddr.IsUnspecified() {
 		// TODO: make RFC8357 compliant
-		log.Printf("doing something I do not understand")
 		peer = &net.UDPAddr{IP: msg.GatewayIPAddr, Port: dhcpv4.ClientPort}
+
+		_, err := conn.WriteTo(resp.ToBytes(), peer)
+		return err
 	}
+
+	log.Println("Response ====")
+	log.Println(resp.Summary())
 
 	return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
 }
 
 func (s *server) handleRequest(conn Listener, peer net.Addr, msg *dhcpv4.DHCPv4) error {
-	return nil
+	cli := lease.Client{
+		HwAddr:   msg.ClientHWAddr,
+		Hostname: msg.HostName(),
+	}
+	ip := msg.RequestedIPAddress()
+
+	if ip == nil {
+		ip = msg.ClientIPAddr
+	}
+
+	renewing := msg.ClientIPAddr != nil
+
+	leaseTime, err := s.provider.Lease(context.Background(), ip, cli, time.Minute, renewing)
+	if err != nil {
+		// should we send a DHCPNACK?
+		return fmt.Errorf("failed to lease %s: %s", ip, err.Error())
+	}
+
+	resp, err := dhcpv4.NewReplyFromRequest(msg,
+		dhcpv4.WithYourIP(ip),
+		dhcpv4.WithServerIP(conn.IP()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp.UpdateOption(dhcpv4.OptServerIdentifier(conn.IP()))
+	resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
+	resp.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
+	resp.UpdateOption(dhcpv4.OptSubnetMask(net.IPv4Mask(255, 255, 255, 0)))
+
+	if !msg.GatewayIPAddr.IsUnspecified() {
+		// TODO: make RFC8357 compliant
+		peer = &net.UDPAddr{IP: msg.GatewayIPAddr, Port: dhcpv4.ClientPort}
+
+		_, err := conn.WriteTo(resp.ToBytes(), peer)
+		return err
+	}
+
+	log.Println("Response ====")
+	log.Println(resp.Summary())
+
+	return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
 }
 
 func (s *server) Wait() error {

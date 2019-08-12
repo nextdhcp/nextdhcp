@@ -16,6 +16,10 @@ type Client struct {
 	Hostname string
 }
 
+func (cli Client) String() string {
+	return cli.HwAddr.String()
+}
+
 // Lease describes an IPv4 address that has been leased to a client
 type Lease struct {
 	// Client is the client that received the lease

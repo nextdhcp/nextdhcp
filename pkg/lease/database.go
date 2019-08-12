@@ -86,7 +86,7 @@ type Option func(d *database)
 // can be leased
 func WithRange(ranges ...*IPRange) Option {
 	return func(db *database) {
-		db.ranges = mergeConsecutiveRanges(ranges)
+		db.ranges = mergeConsecutiveRanges(append(db.ranges, ranges...))
 	}
 }
 

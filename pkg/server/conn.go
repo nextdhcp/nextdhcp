@@ -18,6 +18,8 @@ type Listener interface {
 	SendRaw(dstIP net.IP, dstMac net.HardwareAddr, payload []byte) error
 
 	Raw() net.PacketConn
+
+	IP() net.IP
 }
 
 type listener struct {
@@ -97,6 +99,10 @@ L:
 	log.Printf("Opened sockets on %s with address %s", iface.Name, ip.String())
 
 	return c, nil
+}
+
+func (c *listener) IP() net.IP {
+	return c.ip
 }
 
 func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte) error {
