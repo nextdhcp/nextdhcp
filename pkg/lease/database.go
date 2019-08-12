@@ -90,8 +90,8 @@ func WithRange(ranges ...*IPRange) Option {
 	}
 }
 
-// New returns a new database instance
-func New(nw *net.IPNet, ranges []*IPRange, options ...Option) Database {
+// NewDatabase returns a new database instance
+func NewDatabase(nw *net.IPNet, ranges []*IPRange, options ...Option) Database {
 	// create a copy of the ranges slice
 	rangesCpy := make([]*IPRange, len(ranges))
 	for i, r := range ranges {
@@ -104,7 +104,11 @@ func New(nw *net.IPNet, ranges []*IPRange, options ...Option) Database {
 			IP:   append(net.IP{}, nw.IP...),
 			Mask: append(net.IPMask{}, nw.Mask...),
 		},
-		ranges: rangesCpy,
+		ranges:                    rangesCpy,
+		reservedAddresses:         make(map[uint32]ReservedAddress),
+		reservedAddressesByClient: make(map[string]uint32),
+		leasedAddresses:           make(map[uint32]*Lease),
+		leasedAddressesByClient:   make(map[string]uint32),
 	}
 
 	for _, opt := range options {
@@ -272,9 +276,9 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli Client, leaseTime 
 			db.leasedAddressesByClient[cli.HwAddr.String()] = key
 
 			return leaseTime, nil
-		} else {
-			return 0, errors.New("IP address reserved for a different client")
 		}
+
+		return 0, errors.New("IP address reserved for a different client")
 	}
 
 	return 0, errors.New("no reservation for IP address available")

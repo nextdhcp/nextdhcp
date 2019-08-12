@@ -3,6 +3,7 @@ package lease
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"sort"
 )
@@ -31,6 +32,10 @@ func (r *IPRange) Len() int {
 	}
 
 	return int(end4 - start4)
+}
+
+func (r *IPRange) String() string {
+	return fmt.Sprintf("%s-%s", r.Start, r.End)
 }
 
 func (r *IPRange) ByIdx(i int) net.IP {
@@ -163,6 +168,10 @@ func (ranges IPRanges) Contains(ip net.IP) bool {
 }
 
 func mergeConsecutiveRanges(ranges []*IPRange) []*IPRange {
+	fmt.Println("=========== start ===========")
+	defer fmt.Println("=========== end ===========")
+	defer fmt.Printf("=========== %v ===========\n", ranges)
+
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -178,16 +187,22 @@ func mergeConsecutiveRanges(ranges []*IPRange) []*IPRange {
 	// start from the second range
 	for i := 1; i < len(ranges); i++ {
 		top := stack[len(stack)-1]
+		fmt.Printf("top: %s\n", top)
 
 		topEnd, _ := IPToInt(top.End)
 		curStart, _ := IPToInt(ranges[i].Start)
 		curEnd, _ := IPToInt(ranges[i].End)
 
+		fmt.Printf("	curStart: %s\n", ranges[i].Start)
+		fmt.Printf("	curEnd: %s\n", ranges[i].End)
+
 		// push onto stack if we are not overlapping with stack top
 		if topEnd < curStart {
+			fmt.Printf("=> appending ...\n")
 			stack = append(stack, ranges[i].Clone())
 
 		} else if topEnd < curEnd {
+			fmt.Printf("=> extending end ...\n")
 			// otherwise update the ending time if we have a "bigger" end IP
 			top.End = append(net.IP{}, ranges[i].End...)
 		}

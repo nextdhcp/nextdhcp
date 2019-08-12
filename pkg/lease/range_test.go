@@ -119,7 +119,7 @@ func Test_mergeConsecutiveRanges(t *testing.T) {
 					End:   net.ParseIP("192.168.0.10"),
 				},
 				{
-					Start: net.ParseIP("192.168.0.9"),
+					Start: net.ParseIP("192.168.0.8"),
 					End:   net.ParseIP("192.168.0.100"),
 				},
 			},
