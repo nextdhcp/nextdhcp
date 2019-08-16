@@ -76,5 +76,5 @@ func factory(opts map[string]interface{}) (lease.Database, error) {
 }
 
 func init() {
-	lease.MustRegisterDriver("internal", factory)
+	lease.MustRegisterDriver("", factory)
 }

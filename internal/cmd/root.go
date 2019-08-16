@@ -5,8 +5,8 @@ import (
 	"log"
 	"net"
 
-	"github.com/ppacher/dhcp-ng/pkg/server"
 	_ "github.com/ppacher/dhcp-ng/pkg/lease/builtin"
+	"github.com/ppacher/dhcp-ng/pkg/server"
 	"github.com/spf13/cobra"
 )
 

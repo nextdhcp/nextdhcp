@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/ppacher/dhcp-ng/cmd"
+	"github.com/ppacher/dhcp-ng/internal/cmd"
 )
 
 func main() {
