@@ -1,4 +1,3 @@
-// Package lease provides utility methods for IP address lease management
 package lease
 
 import (
@@ -6,19 +5,6 @@ import (
 	"net"
 	"time"
 )
-
-type Client struct {
-	// HwAddr is the hardware address of the client that received the lease
-	HwAddr net.HardwareAddr
-
-	// Hostname is the hostname of the client that received the lease. This field
-	// may be empty
-	Hostname string
-}
-
-func (cli Client) String() string {
-	return cli.HwAddr.String()
-}
 
 // Lease describes an IPv4 address that has been leased to a client
 type Lease struct {
@@ -57,8 +43,9 @@ func (l *Lease) String() string {
 // Clone returns a deep copy of the lease
 func (l *Lease) Clone() *Lease {
 	return &Lease{
-		Client: Client{
+		Client:s Client{
 			HwAddr:   append(net.HardwareAddr{}, l.Client.HwAddr...),
+			ID:       l.Client.ID,
 			Hostname: l.Client.Hostname,
 		},
 		Expires: l.Expires,

@@ -19,7 +19,7 @@ type Context struct {
 	shouldSkip bool             // set to true if we should skip the entire request
 	peer       net.Addr         // peer is the peer that send the request
 	peerHwAddr net.HardwareAddr // the hardware (MAC) address of the peer
-	iface      *net.Interface   // the interface that received the request
+	iface      net.Interface    // the interface that received the request
 	db         lease.Database   // the lease database assigned to the subnet/interface
 }
 
@@ -37,18 +37,14 @@ func (c *Context) PeerHardwareAddr() net.HardwareAddr {
 }
 
 // Interface returns the incoming interface if known
-func (c *Context) Interface() *net.Interface {
+func (c *Context) Interface() net.Interface {
 	return c.iface
 }
 
 // InterfaceName is the name of the interface the DHCPv4 request has been received.
 // If not known an empty string is returned
 func (c *Context) InterfaceName() string {
-	if c.iface != nil {
-		return c.iface.Name
-	}
-
-	return ""
+	return c.iface.Name
 }
 
 // Database may return a lease.Database that has been assigned to the interface the request

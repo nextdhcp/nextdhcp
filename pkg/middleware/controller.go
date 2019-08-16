@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"errors"
 	"net"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -29,7 +28,7 @@ type Controller interface {
 	Database() lease.Database
 
 	// Serve the given DHCP request message
-	Serve(ctx context.Context, peer net.Addr, request *dhcpv4.DHCPv4) (*dhcpv4.DHCPv4, error)
+	Serve(ctx context.Context, iface net.Interface, peerHwAddr net.HardwareAddr, peer net.Addr, request *dhcpv4.DHCPv4) (*dhcpv4.DHCPv4, error)
 }
 
 // Option is a controller option
@@ -39,6 +38,13 @@ type Option func(c *ctrl)
 func WithDatabase(db lease.Database) Option {
 	return func(c *ctrl) {
 		c.db = db
+	}
+}
+
+// WithHandler adds a new middleware handler to the chain
+func WithHandler(h Handler) Option {
+	return func(c *ctrl) {
+		c.handlers = append(c.handlers, h)
 	}
 }
 
@@ -54,13 +60,37 @@ func NewController(options ...Option) Controller {
 }
 
 type ctrl struct {
-	db lease.Database
+	db       lease.Database
+	handlers []Handler
 }
 
 func (c *ctrl) Database() lease.Database {
 	return c.db
 }
 
-func (c *ctrl) Serve(ctx context.Context, peer net.Addr, request *dhcpv4.DHCPv4) (*dhcpv4.DHCPv4, error) {
-	return nil, errors.New("not yet implemented")
+func (c *ctrl) Serve(ctx context.Context, iface net.Interface, peerHwAddr net.HardwareAddr, peer net.Addr, request *dhcpv4.DHCPv4) (*dhcpv4.DHCPv4, error) {
+	resp, err := dhcpv4.NewReplyFromRequest(request)
+	if err != nil {
+		return nil, err
+	}
+
+	serveCtx := &Context{
+		Resp:       resp,
+		ctx:        ctx,
+		req:        request,
+		peer:       peer,
+		db:         c.db,
+		peerHwAddr: peerHwAddr,
+		iface:      iface,
+	}
+
+	for _, handler := range c.handlers {
+		handler.Serve(serveCtx, request)
+
+		if serveCtx.shouldSkip {
+			return nil, ErrDropRequest
+		}
+	}
+
+	return serveCtx.Resp, nil
 }

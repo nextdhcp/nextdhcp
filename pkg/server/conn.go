@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"syscall"
@@ -12,27 +14,31 @@ import (
 	"github.com/mdlayher/raw"
 )
 
-type Listener interface {
-	net.PacketConn
+type Conn interface {
+	io.Closer
 
 	SendRaw(dstIP net.IP, dstMac net.HardwareAddr, payload []byte) error
+	Recv(context.Context) (*Request, error)
 
 	Raw() net.PacketConn
+	UDP() net.PacketConn
 
 	IP() net.IP
 }
 
-type listener struct {
-	// The embedded net.PacketConn is a net.UDPConn that
-	// is used to receive DHCP requests and
-	// send routed UDP packets to clients in RENEWING state
-	// as well as DHCP relay agents (once supported ...).
-	net.PacketConn
+type Request struct {
+	Peer       *net.UDPAddr
+	PeerHwAddr net.HardwareAddr
+	Message    *dhcpv4.DHCPv4
+	Iface      net.Interface
+}
 
-	// rawConn is used to send directed unicasts without prior ARP requests.
-	// All packets received on this connection are read and discarded immediately
-	// as they should be duplicates (already received on rawConn)
+type listener struct {
+	udpConn net.PacketConn
+
 	rawConn net.PacketConn
+
+	requests chan *Request
 
 	// iface is the interface we are listening on
 	iface net.Interface
@@ -41,7 +47,7 @@ type listener struct {
 	ip net.IP
 }
 
-func NewListener(ip net.IP) (Listener, error) {
+func NewConn(ip net.IP) (Conn, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -74,27 +80,29 @@ L:
 	}
 
 	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{
-		IP:   net.IPv4zero, // TODO
+		IP:   ip,
 		Port: dhcpv4.ServerPort,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	rawConn, err := raw.ListenPacket(&iface, syscall.ETH_P_ALL, &raw.Config{LinuxSockDGRAM: false})
+	rawConn, err := raw.ListenPacket(&iface, syscall.ETH_P_IP, &raw.Config{LinuxSockDGRAM: false})
 	if err != nil {
 		udpConn.Close()
 		return nil, err
 	}
 
 	c := &listener{
-		rawConn:    rawConn,
-		PacketConn: udpConn,
-		iface:      iface,
-		ip:         ip,
+		rawConn:  rawConn,
+		udpConn:  udpConn,
+		iface:    iface,
+		ip:       ip,
+		requests: make(chan *Request, 10),
 	}
 
-	go c.discardRAWInput()
+	go c.discardUDPInput()
+	go c.receiveRaw()
 
 	log.Printf("Opened sockets on %s with address %s", iface.Name, ip.String())
 
@@ -155,7 +163,7 @@ func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte
 
 // Close closes both connections and returns the first error encountered
 func (c *listener) Close() error {
-	err := c.PacketConn.Close()
+	err := c.udpConn.Close()
 
 	if e := c.rawConn.Close(); e != nil && err == nil {
 		err = e
@@ -168,10 +176,24 @@ func (c *listener) Raw() net.PacketConn {
 	return c.rawConn
 }
 
-func (c *listener) discardRAWInput() {
-	b := make([]byte, 1024)
+func (c *listener) UDP() net.PacketConn {
+	return c.udpConn
+}
+
+func (c *listener) Recv(ctx context.Context) (*Request, error) {
+	select {
+	case v := <-c.requests:
+		v.Iface = c.iface
+		return v, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (c *listener) discardUDPInput() {
+	b := make([]byte, 4096)
 	for {
-		_, _, err := c.rawConn.ReadFrom(b)
+		_, _, err := c.udpConn.ReadFrom(b)
 		if err != nil {
 			if opErr, ok := err.(*net.OpError); ok {
 				if opErr.Timeout() || opErr.Temporary() {
@@ -181,6 +203,67 @@ func (c *listener) discardRAWInput() {
 
 			return
 		}
-		//log.Printf("discarded raw packet ...")
+	}
+}
+
+func (c *listener) receiveRaw() {
+	b := make([]byte, 4096)
+	defer close(c.requests)
+
+	for {
+		n, peer, err := c.rawConn.ReadFrom(b)
+		if err != nil {
+			if opErr, ok := err.(*net.OpError); ok {
+				if opErr.Timeout() || opErr.Temporary() {
+					continue
+				}
+			}
+			return
+		}
+
+		packet := gopacket.NewPacket(b[:n], layers.LayerTypeEthernet, gopacket.Default)
+		if err := packet.ErrorLayer(); err != nil {
+			//log.Println("failed to decode packet", err)
+			continue
+		}
+
+		ipLayer, ok := packet.NetworkLayer().(*layers.IPv4)
+		if !ok {
+			//log.Println(peerHwAddr, "not an IPv4 packet")
+			continue
+		}
+
+		srcIP := ipLayer.SrcIP.To4()
+
+		udpLayer, ok := packet.TransportLayer().(*layers.UDP)
+		if !ok {
+			//log.Println(peerHwAddr, srcIP, ipLayer.DstIP, "not a UDP packet", ipLayer.Protocol)
+			continue
+		}
+
+		if udpLayer.DstPort != dhcpv4.ServerPort {
+			//log.Println(peerHwAddr, srcIP, ipLayer.DstIP, "not sent to server port", udpLayer.DstPort)
+			continue
+		}
+
+		if len(udpLayer.Payload) == 0 {
+			//log.Println("no packet payload ...")
+			continue
+		}
+
+		dhcpRequest, err := dhcpv4.FromBytes(udpLayer.Payload)
+		if err != nil {
+			log.Println("malformed DHCP request message: ", err)
+			continue
+		}
+
+		c.requests <- &Request{
+			Peer: &net.UDPAddr{
+				IP:   srcIP,
+				Port: int(udpLayer.SrcPort),
+			},
+			PeerHwAddr: peer.(*raw.Addr).HardwareAddr,
+			Message:    dhcpRequest,
+		}
 	}
 }

@@ -1,4 +1,4 @@
-package lease
+package iprange
 
 import (
 	"net"
@@ -177,7 +177,7 @@ func Test_mergeConsecutiveRanges(t *testing.T) {
 	}
 
 	for i, c := range cases {
-		res := mergeConsecutiveRanges(c.I)
+		res := Merge(c.I)
 		assert.Equal(t, c.E, res, "Test case #%d failed", i)
 	}
 }
@@ -274,7 +274,7 @@ func Test_deleteRange(t *testing.T) {
 	}
 
 	for i, c := range cases {
-		res := deleteRange(c.D, c.I)
+		res := DeleteFrom(c.D, c.I)
 		assert.Equal(t, c.E, res, "Test case #%d failed", i)
 	}
 }

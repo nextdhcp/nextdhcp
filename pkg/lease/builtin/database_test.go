@@ -1,4 +1,4 @@
-package lease
+package builtin
 
 import (
 	"context"
@@ -7,12 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ppacher/dhcp-ng/pkg/lease"
+	"github.com/ppacher/dhcp-ng/pkg/lease/iprange"
 	"github.com/stretchr/testify/assert"
 )
 
 var (
 	ctx           = context.Background()
-	defaultClient = &Client{
+	defaultClient = &lease.Client{
 		HwAddr:   net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee},
 		Hostname: "",
 	}
@@ -29,9 +31,9 @@ func addReservedIP(db *database, ip string, mac string) uint32 {
 	if err != nil {
 		panic(err)
 	}
-	key, _ := IPToInt(i.To4())
-	db.reservedAddresses[key] = ReservedAddress{
-		Client: Client{HwAddr: m},
+	key, _ := iprange.IP2Int(i.To4())
+	db.reservedAddresses[key] = lease.ReservedAddress{
+		Client: lease.Client{HwAddr: m},
 		IP:     i.To4(),
 	}
 	db.reservedAddressesByClient[m.String()] = key
@@ -49,9 +51,9 @@ func addLeasedIP(db *database, ip string, mac string) uint32 {
 	if err != nil {
 		panic(err)
 	}
-	key, _ := IPToInt(i.To4())
-	db.leasedAddresses[key] = &Lease{
-		Client:  Client{HwAddr: m},
+	key, _ := iprange.IP2Int(i.To4())
+	db.leasedAddresses[key] = &lease.Lease{
+		Client:  lease.Client{HwAddr: m},
 		Address: i.To4(),
 		Expires: time.Now().Add(time.Minute),
 	}
@@ -62,16 +64,18 @@ func addLeasedIP(db *database, ip string, mac string) uint32 {
 
 func getTestDatabase(t *testing.T) *database {
 	_, ipNet, _ := net.ParseCIDR("192.168.0.1/24")
-	ranges := []*IPRange{
-		&IPRange{
+	ranges := []*iprange.IPRange{
+		&iprange.IPRange{
 			Start: net.IP{192, 168, 0, 10},
 			End:   net.IP{192, 168, 0, 15},
 		},
+		&iprange.IPRange{
+			Start: net.IP{192, 168, 0, 12},
+			End:   net.IP{192, 168, 0, 20},
+		},
 	}
-	db := NewDatabase(ipNet, ranges, WithRange(&IPRange{
-		Start: net.IP{192, 168, 0, 12},
-		End:   net.IP{192, 168, 0, 20},
-	}))
+
+	db := New(ipNet, ranges)
 
 	return db.(*database)
 }
@@ -122,12 +126,12 @@ func Test_Database_NoLeaseAvailable(t *testing.T) {
 func Test_Database_AddRange(t *testing.T) {
 	db := getTestDatabase(t)
 
-	r1 := &IPRange{
+	r1 := &iprange.IPRange{
 		Start: net.IP{192, 168, 0, 100},
 		End:   net.IP{192, 168, 0, 200},
 	}
 
-	r2 := &IPRange{
+	r2 := &iprange.IPRange{
 		Start: net.IP{192, 168, 0, 20},
 		End:   net.IP{192, 168, 0, 30},
 	}
@@ -145,7 +149,7 @@ func Test_Database_AddRange(t *testing.T) {
 func Test_Database_DeleteRange(t *testing.T) {
 	db := getTestDatabase(t)
 
-	db.DeleteRange(&IPRange{
+	db.DeleteRange(&iprange.IPRange{
 		Start: net.IP{192, 168, 0, 15},
 		End:   net.IP{192, 168, 0, 20},
 	})
@@ -171,7 +175,7 @@ func Test_Database_Leases(t *testing.T) {
 	assert.Equal(t, leases[1].Address, net.IP{192, 168, 0, 11})
 
 	// Leases should return a deep clone of the lease
-	key, _ := IPToInt(net.IP{192, 168, 0, 10})
+	key, _ := iprange.IP2Int(net.IP{192, 168, 0, 10})
 
 	// change the first byte of net.IP
 	db.leasedAddresses[key].Address[0] = 100
@@ -229,7 +233,7 @@ func Test_Database_Reserve(t *testing.T) {
 
 	db = getTestDatabase(t)
 	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 14}, *defaultClient))
-	key, _ := IPToInt(net.IP{192, 168, 0, 14})
+	key, _ := iprange.IP2Int(net.IP{192, 168, 0, 14})
 	assert.Len(t, db.reservedAddresses, 1)
 	assert.Equal(t, net.IP{192, 168, 0, 14}, db.reservedAddresses[key].IP)
 	assert.Equal(t, defaultClient.HwAddr, db.reservedAddresses[key].Client.HwAddr)

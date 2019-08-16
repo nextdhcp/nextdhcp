@@ -1,4 +1,4 @@
-package lease
+package iprange
 
 import (
 	"encoding/binary"
@@ -21,12 +21,12 @@ func (r *IPRange) Len() int {
 		return 0
 	}
 
-	end4, ok := IPToInt(r.End)
+	end4, ok := IP2Int(r.End)
 	if !ok {
 		return 0
 	}
 
-	start4, ok := IPToInt(r.Start)
+	start4, ok := IP2Int(r.Start)
 	if !ok {
 		return 0
 	}
@@ -39,12 +39,12 @@ func (r *IPRange) String() string {
 }
 
 func (r *IPRange) ByIdx(i int) net.IP {
-	start, ok := IPToInt(r.Start)
+	start, ok := IP2Int(r.Start)
 	if !ok {
 		return nil
 	}
 
-	return intToIP(start + uint32(i))
+	return Int2IP(start + uint32(i))
 }
 
 // Contains checks if ip is part of the range
@@ -69,8 +69,8 @@ func (r *IPRange) Clone() *IPRange {
 	return &IPRange{start, end}
 }
 
-// IPToInt converts a IPv4 address to it's unsigned integer representation
-func IPToInt(ip net.IP) (uint32, bool) {
+// IP2Int converts a IPv4 address to it's unsigned integer representation
+func IP2Int(ip net.IP) (uint32, bool) {
 	v4 := ip.To4()
 	if v4 == nil {
 		return 0, false
@@ -79,14 +79,14 @@ func IPToInt(ip net.IP) (uint32, bool) {
 	return binary.BigEndian.Uint32(v4), true
 }
 
-func intToIP(i uint32) net.IP {
+func Int2IP(i uint32) net.IP {
 	r := make([]byte, 4)
 	binary.BigEndian.PutUint32(r, i)
 	return net.IPv4(r[0], r[1], r[2], r[3]).To4()
 }
 
 func nextIP(ip net.IP) net.IP {
-	n, ok := IPToInt(ip)
+	n, ok := IP2Int(ip)
 	if !ok {
 		return nil
 	}
@@ -99,7 +99,7 @@ func nextIP(ip net.IP) net.IP {
 }
 
 func prevIP(ip net.IP) net.IP {
-	n, ok := IPToInt(ip)
+	n, ok := IP2Int(ip)
 	if !ok {
 		return nil
 	}
@@ -113,8 +113,8 @@ func prevIP(ip net.IP) net.IP {
 
 // Validate the IP range and return any error encountered
 func (r *IPRange) Validate() error {
-	start4, startOk := IPToInt(r.Start)
-	end4, endOk := IPToInt(r.End)
+	start4, startOk := IP2Int(r.Start)
+	end4, endOk := IP2Int(r.End)
 
 	if !startOk {
 		return errors.New("Invalid start IP")
@@ -142,8 +142,8 @@ func (ranges IPRanges) Len() int {
 
 // Less implements sort.Interface
 func (ranges IPRanges) Less(i, j int) bool {
-	startI, _ := IPToInt(ranges[i].Start)
-	startJ, _ := IPToInt(ranges[j].Start)
+	startI, _ := IP2Int(ranges[i].Start)
+	startJ, _ := IP2Int(ranges[j].Start)
 
 	return startI < startJ
 }
@@ -167,7 +167,7 @@ func (ranges IPRanges) Contains(ip net.IP) bool {
 	return false
 }
 
-func mergeConsecutiveRanges(ranges []*IPRange) []*IPRange {
+func Merge(ranges []*IPRange) []*IPRange {
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -184,9 +184,9 @@ func mergeConsecutiveRanges(ranges []*IPRange) []*IPRange {
 	for i := 1; i < len(ranges); i++ {
 		top := stack[len(stack)-1]
 
-		topEnd, _ := IPToInt(top.End)
-		curStart, _ := IPToInt(ranges[i].Start)
-		curEnd, _ := IPToInt(ranges[i].End)
+		topEnd, _ := IP2Int(top.End)
+		curStart, _ := IP2Int(ranges[i].Start)
+		curEnd, _ := IP2Int(ranges[i].End)
 
 		// push onto stack if we are not overlapping with stack top
 		if topEnd < curStart {
@@ -201,15 +201,15 @@ func mergeConsecutiveRanges(ranges []*IPRange) []*IPRange {
 	return stack
 }
 
-func deleteRange(delete *IPRange, ranges []*IPRange) []*IPRange {
+func DeleteFrom(delete *IPRange, ranges []*IPRange) []*IPRange {
 	stack := []*IPRange{}
 
-	deleteStart, _ := IPToInt(delete.Start)
-	deleteEnd, _ := IPToInt(delete.End)
+	deleteStart, _ := IP2Int(delete.Start)
+	deleteEnd, _ := IP2Int(delete.End)
 
 	for i := 0; i < len(ranges); i++ {
-		currStart, _ := IPToInt(ranges[i].Start)
-		currEnd, _ := IPToInt(ranges[i].End)
+		currStart, _ := IP2Int(ranges[i].Start)
+		currEnd, _ := IP2Int(ranges[i].End)
 
 		// skip ranges that cannot contain the range to delete
 		if deleteStart > currEnd {

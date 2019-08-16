@@ -43,17 +43,12 @@ func WithListen(l ...net.IP) Option {
 
 // New creates a new DHCPv4 server
 func New(opts ...Option) Server {
-	_, network, _ := net.ParseCIDR("10.100.0.1/24")
 	s := &server{
-		provider: lease.NewDatabase(network, nil),
+		provider: lease.MustOpen("internal", map[string]interface{}{
+			"network": "10.100.0.1/24",
+			"ranges":  []interface{}{"10.100.0.100 - 10.100.0.150"},
+		}),
 	}
-
-	s.provider.AddRange(
-		&lease.IPRange{
-			Start: net.ParseIP("10.100.0.100"),
-			End:   net.ParseIP("10.100.0.150"),
-		},
-	)
 
 	for _, opt := range opts {
 		opt(s)
@@ -71,7 +66,7 @@ func (s *server) Start(ctx context.Context) error {
 	})
 
 	for _, l := range s.listens {
-		conn, err := NewListener(l)
+		conn, err := NewConn(l)
 		if err != nil {
 			errs <- err
 			return err
@@ -84,61 +79,39 @@ func (s *server) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *server) serveConn(ctx context.Context, conn Listener) {
-	log.Printf("Starting to serve on %s", conn.LocalAddr().String())
+func (s *server) serveConn(ctx context.Context, conn Conn) {
+	log.Printf("Starting to serve on %s", conn.UDP().LocalAddr().String())
 	go func() {
 		s.grp.Wait()
-		log.Printf("Closed connection %s", conn.LocalAddr().String())
+		log.Printf("Closed connection %s", conn.UDP().LocalAddr().String())
 		conn.Close()
 	}()
 
 	s.grp.Go(func() error {
-		defer log.Printf("Stopped serving %s", conn.LocalAddr().String())
+		defer log.Printf("Stopped serving %s", conn.UDP().LocalAddr().String())
 		for {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
 
 			deadline := time.Now().Add(1 * time.Second)
-			if err := conn.SetReadDeadline(deadline); err != nil {
-				return err
-			}
+			reqCtx, _ := context.WithDeadline(ctx, deadline)
 
-			buf := make([]byte, 4096)
-			n, peer, err := conn.ReadFrom(buf)
+			req, err := conn.Recv(reqCtx)
 
 			if err != nil {
 				// Read timeouts and temporary network errors are fine
-				if opErr, ok := err.(*net.OpError); ok {
-					if opErr.Timeout() {
-						continue
-					}
-
-					if opErr.Temporary() {
-						log.Printf("Temporary network error: %s", opErr.Error())
-						continue
-					}
+				if err == reqCtx.Err() {
+					// check if we should abort
+					continue
 				}
 
 				return err
 			}
 
-			msg, err := dhcpv4.FromBytes(buf[:n])
-			if err != nil {
-				log.Printf("Failed to parse DHCPv4 message: %s", err.Error())
-				continue
-			}
+			msg := req.Message
 
-			peerAddr, ok := peer.(*net.UDPAddr)
-			if !ok {
-				log.Printf("Not a UDP connection? Peer is %s", peer.String())
-
-				// default to the broadcast IP if we operate on a non-UDP connection
-				peerAddr = &net.UDPAddr{
-					IP:   net.IPv4bcast,
-					Port: 0,
-				}
-			}
+			peerAddr := req.Peer
 
 			if peerAddr.IP == nil || peerAddr.IP.Equal(net.IPv4zero) {
 				peerAddr = &net.UDPAddr{
@@ -153,9 +126,9 @@ func (s *server) serveConn(ctx context.Context, conn Listener) {
 
 			switch msg.MessageType() {
 			case dhcpv4.MessageTypeDiscover:
-				err = s.handleDiscovery(conn, peer, msg)
+				err = s.handleDiscovery(conn, peerAddr, msg)
 			case dhcpv4.MessageTypeRequest:
-				err = s.handleRequest(conn, peer, msg)
+				err = s.handleRequest(conn, peerAddr, msg)
 			default:
 				err = errors.New("unsupported message type")
 			}
@@ -168,7 +141,7 @@ func (s *server) serveConn(ctx context.Context, conn Listener) {
 }
 
 // https://tools.ietf.org/html/rfc2131#section-4.3.1
-func (s *server) handleDiscovery(conn Listener, peer net.Addr, msg *dhcpv4.DHCPv4) error {
+func (s *server) handleDiscovery(conn Conn, peer net.Addr, msg *dhcpv4.DHCPv4) error {
 	cli := lease.Client{
 		HwAddr:   msg.ClientHWAddr,
 		Hostname: msg.HostName(),
@@ -208,17 +181,17 @@ func (s *server) handleDiscovery(conn Listener, peer net.Addr, msg *dhcpv4.DHCPv
 		// TODO: make RFC8357 compliant
 		peer = &net.UDPAddr{IP: msg.GatewayIPAddr, Port: dhcpv4.ClientPort}
 
-		_, err := conn.WriteTo(resp.ToBytes(), peer)
+		_, err := conn.UDP().WriteTo(resp.ToBytes(), peer)
 		return err
 	}
 
 	log.Println("Response ====")
 	log.Println(resp.Summary())
-
-	return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
+	return nil
+	//return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
 }
 
-func (s *server) handleRequest(conn Listener, peer net.Addr, msg *dhcpv4.DHCPv4) error {
+func (s *server) handleRequest(conn Conn, peer net.Addr, msg *dhcpv4.DHCPv4) error {
 	cli := lease.Client{
 		HwAddr:   msg.ClientHWAddr,
 		Hostname: msg.HostName(),
@@ -254,14 +227,14 @@ func (s *server) handleRequest(conn Listener, peer net.Addr, msg *dhcpv4.DHCPv4)
 		// TODO: make RFC8357 compliant
 		peer = &net.UDPAddr{IP: msg.GatewayIPAddr, Port: dhcpv4.ClientPort}
 
-		_, err := conn.WriteTo(resp.ToBytes(), peer)
+		_, err := conn.UDP().WriteTo(resp.ToBytes(), peer)
 		return err
 	}
 
 	log.Println("Response ====")
 	log.Println(resp.Summary())
-
-	return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
+	return nil
+	//return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
 }
 
 func (s *server) Wait() error {

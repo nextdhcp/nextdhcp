@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/ppacher/dhcp-ng/pkg/server"
+	_ "github.com/ppacher/dhcp-ng/pkg/lease/builtin"
 	"github.com/spf13/cobra"
 )
 
