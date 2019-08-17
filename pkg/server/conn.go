@@ -114,7 +114,7 @@ func (c *listener) IP() net.IP {
 }
 
 func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte) error {
-	data, err := c.preparePacket(c.iface.HardwareAddr, c.IP(), dstMAC, dstIP, payload)
+	data, err := PreparePacket(c.iface.HardwareAddr, c.IP(), dstMAC, dstIP, payload)
 	if err != nil {
 		return err
 	}
@@ -124,49 +124,6 @@ func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte
 	})
 
 	return err
-}
-
-func (c *listener) preparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAddr, dstIP net.IP, payload []byte) ([]byte, error) {
-	buf := gopacket.NewSerializeBuffer()
-
-	opts := gopacket.SerializeOptions{
-		ComputeChecksums: true,
-		FixLengths:       true,
-	}
-
-	ethernet := &layers.Ethernet{
-		DstMAC:       dstMAC,
-		SrcMAC:       srcMAC,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
-
-	ip := &layers.IPv4{
-		Version:  4,
-		TTL:      255,
-		SrcIP:    srcIP,
-		DstIP:    dstIP,
-		Protocol: layers.IPProtocolUDP,
-		Flags:    layers.IPv4DontFragment,
-	}
-
-	udp := &layers.UDP{
-		SrcPort: 67,
-		DstPort: 68,
-	}
-
-	udp.SetNetworkLayerForChecksum(ip)
-
-	err := gopacket.SerializeLayers(buf, opts,
-		ethernet,
-		ip,
-		udp,
-		gopacket.Payload(payload))
-
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
 }
 
 // Close closes both connections and returns the first error encountered
