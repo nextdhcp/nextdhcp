@@ -4,4 +4,6 @@
 <hr>
 
 [![Build Status](https://travis-ci.com/ppacher/dhcp-ng.svg?branch=master)](https://travis-ci.com/ppacher/dhcp-ng)
+[![codecov](https://codecov.io/gh/ppacher/dhcp-ng/branch/master/graph/badge.svg)](https://codecov.io/gh/ppacher/dhcp-ng)
+
 
