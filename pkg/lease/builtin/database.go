@@ -30,6 +30,8 @@ func New(nw *net.IPNet, ranges []*iprange.IPRange) lease.Database {
 		rangesCpy[i] = r.Clone()
 	}
 
+	rangesCpy = iprange.Merge(rangesCpy)
+
 	db := &database{
 		l: mutex.New(),
 		network: &net.IPNet{
