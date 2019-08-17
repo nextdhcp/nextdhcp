@@ -30,6 +30,19 @@ func (mng *PluginManager) Setup(L *lua.LState) error {
 	return nil
 }
 
+// Plugins returns a list of registered plugins
+func (mng *PluginManager) Plugins() []PluginConfig {
+	mng.rwl.RLock()
+	defer mng.rwl.RUnlock()
+
+	plugins := make([]PluginConfig, len(mng.plugins))
+	for i, p := range mng.plugins {
+		plugins[i] = p
+	}
+
+	return plugins
+}
+
 func (mng *PluginManager) declarePlugin(L *lua.LState) int {
 	name := L.ToString(1)
 	if name == "" {

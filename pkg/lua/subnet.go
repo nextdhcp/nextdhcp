@@ -51,6 +51,21 @@ func (mng *SubnetManager) Setup(L *lua.LState) error {
 	return nil
 }
 
+// Subnets returns a list of all registered subnets
+func (mng *SubnetManager) Subnets() []Subnet {
+	mng.rwl.RLock()
+	defer mng.rwl.RUnlock()
+
+	subnets := make([]Subnet, len(mng.subnets))
+
+	// TODO(ppacher) deep copy subnets (ie. copy IP and IPNet byte slices)
+	for i, s := range mng.subnets {
+		subnets[i] = s
+	}
+
+	return subnets
+}
+
 func (mng *SubnetManager) declareSubnet(L *lua.LState) int {
 	str := L.ToString(1)
 	if str == "" {
