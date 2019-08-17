@@ -14,16 +14,37 @@ import (
 	"github.com/mdlayher/raw"
 )
 
+// Conn is a DHCPv4 connection utilizing a standard UDP and an AF_PACKET socket
+// The UDP socket is used to send routed unicasts to clients in RENEWING state or DHCP
+// relay agents. The RAW socket (AF_PACKET) is used to receive all DHCPv4 requests as
+// well as sending directed unicast packets without a prior ARP request. This is required
+// for clients in REBINDING or INIT-REBOOT state. Moreover, any packet received on
+// the UDP socket is discarded immediately as it should be a duplicate already received
+// on the RAW socket
 type Conn interface {
 	io.Closer
 
-	SendRaw(dstIP net.IP, dstMac net.HardwareAddr, payload []byte) error
+	// SendDirectUnicast sends a direct unicast message without a prior ARP request to
+	// determine the ethernet address of the destination IP. Note that SendDirectUnicast
+	// does not work on routed networks and must be used on a switched local address
+	SendDirectUnicast(dstIP net.IP, dstMac net.HardwareAddr, payload []byte) error
+
+	// Recv receives a DHCP request from the RAW socket
 	Recv(context.Context) (*Request, error)
 
+	// Raw returns the underlying RAW packet connection
 	Raw() net.PacketConn
+
+	// UDP returns the underlying UDP packet connection. Note that any call to ReadFrom
+	// will race with the discard goroutine that reads and discards all packets received
+	// on this connection
 	UDP() net.PacketConn
 
+	// IP returns the UPD IP address the connection is listening on.
 	IP() net.IP
+
+	// Interface returns the interface the RAW socket is bound to
+	Interface() *net.Interface
 }
 
 type Request struct {
@@ -113,7 +134,13 @@ func (c *listener) IP() net.IP {
 	return c.ip
 }
 
-func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte) error {
+func (c *listener) Interface() *net.Interface {
+	iface := c.iface
+
+	return &iface
+}
+
+func (c *listener) SendDirectUnicast(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte) error {
 	data, err := PreparePacket(c.iface.HardwareAddr, c.IP(), dstMAC, dstIP, payload)
 	if err != nil {
 		return err

@@ -188,7 +188,7 @@ func (s *server) handleDiscovery(conn Conn, peer net.Addr, msg *dhcpv4.DHCPv4) e
 	log.Println("Response ====")
 	log.Println(resp.Summary())
 	return nil
-	//return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
+	//return conn.SendDirectUnicast(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
 }
 
 func (s *server) handleRequest(conn Conn, peer net.Addr, msg *dhcpv4.DHCPv4) error {
@@ -234,7 +234,7 @@ func (s *server) handleRequest(conn Conn, peer net.Addr, msg *dhcpv4.DHCPv4) err
 	log.Println("Response ====")
 	log.Println(resp.Summary())
 	return nil
-	//return conn.SendRaw(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
+	//return conn.SendDirectUnicast(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
 }
 
 func (s *server) Wait() error {

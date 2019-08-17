@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+// PreparePacket prepares a raw UDP network packet including Ethernet, IP and UDP layers
 func PreparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAddr, dstIP net.IP, payload []byte) ([]byte, error) {
 	buf := gopacket.NewSerializeBuffer()
 
