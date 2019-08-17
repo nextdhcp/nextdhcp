@@ -65,11 +65,11 @@ func addLeasedIP(db *database, ip string, mac string) uint32 {
 func getTestDatabase(t *testing.T) *database {
 	_, ipNet, _ := net.ParseCIDR("192.168.0.1/24")
 	ranges := []*iprange.IPRange{
-		&iprange.IPRange{
+		{
 			Start: net.IP{192, 168, 0, 10},
 			End:   net.IP{192, 168, 0, 15},
 		},
-		&iprange.IPRange{
+		{
 			Start: net.IP{192, 168, 0, 12},
 			End:   net.IP{192, 168, 0, 20},
 		},
