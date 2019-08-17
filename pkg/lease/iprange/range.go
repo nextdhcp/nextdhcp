@@ -38,6 +38,7 @@ func (r *IPRange) String() string {
 	return fmt.Sprintf("%s-%s", r.Start, r.End)
 }
 
+// ByIdx returns the IP address at the given index
 func (r *IPRange) ByIdx(i int) net.IP {
 	start, ok := IP2Int(r.Start)
 	if !ok {
@@ -79,6 +80,7 @@ func IP2Int(ip net.IP) (uint32, bool) {
 	return binary.BigEndian.Uint32(v4), true
 }
 
+// Int2IP converts a uint32 to it's IPv4 representation
 func Int2IP(i uint32) net.IP {
 	r := make([]byte, 4)
 	binary.BigEndian.PutUint32(r, i)
@@ -167,6 +169,7 @@ func (ranges IPRanges) Contains(ip net.IP) bool {
 	return false
 }
 
+// Merge merges multiple IP ranges and combins overlapping ranges
 func Merge(ranges []*IPRange) []*IPRange {
 	if len(ranges) == 0 {
 		return nil
@@ -201,6 +204,8 @@ func Merge(ranges []*IPRange) []*IPRange {
 	return stack
 }
 
+// DeleteFrom deletes a range from a set of IP ranges. The range to delte may span multiple
+// ip ranges
 func DeleteFrom(delete *IPRange, ranges []*IPRange) []*IPRange {
 	stack := []*IPRange{}
 

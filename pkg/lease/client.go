@@ -2,6 +2,7 @@ package lease
 
 import "net"
 
+// Client is a DHCP client
 type Client struct {
 	// HwAddr is the hardware address of the client for which IP has been reserved
 	HwAddr net.HardwareAddr

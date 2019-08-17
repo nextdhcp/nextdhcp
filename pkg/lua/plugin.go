@@ -7,6 +7,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+// PluginConfig describes the configuration of a loadable plugin
 type PluginConfig struct {
 	// Name is the name of the plugin
 	Name string

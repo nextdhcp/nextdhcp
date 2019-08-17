@@ -95,9 +95,10 @@ func (s *server) serveConn(ctx context.Context, conn Conn) {
 			}
 
 			deadline := time.Now().Add(1 * time.Second)
-			reqCtx, _ := context.WithDeadline(ctx, deadline)
+			reqCtx, cancel := context.WithDeadline(ctx, deadline)
 
 			req, err := conn.Recv(reqCtx)
+			cancel()
 
 			if err != nil {
 				// Read timeouts and temporary network errors are fine

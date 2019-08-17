@@ -39,6 +39,7 @@ type Subnet struct {
 	SubnetConfig
 }
 
+// SubnetManager allows subnets to be declared via lua code
 type SubnetManager struct {
 	rwl     sync.RWMutex
 	subnets []Subnet

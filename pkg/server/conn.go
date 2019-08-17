@@ -47,6 +47,8 @@ type Conn interface {
 	Interface() *net.Interface
 }
 
+// Request wraps a DHCPv4 request as well as metadata about the incoming interface
+// then the sending remote peer
 type Request struct {
 	Peer       *net.UDPAddr
 	PeerHwAddr net.HardwareAddr
@@ -68,6 +70,8 @@ type listener struct {
 	ip net.IP
 }
 
+// NewConn returns a new conn bound to the given IP address and the interface
+// that has it assigned
 func NewConn(ip net.IP) (Conn, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {

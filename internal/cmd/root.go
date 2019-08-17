@@ -5,7 +5,9 @@ import (
 	"log"
 	"net"
 
+	// import built-in lease database
 	_ "github.com/ppacher/dhcp-ng/pkg/lease/builtin"
+
 	"github.com/ppacher/dhcp-ng/pkg/server"
 	"github.com/spf13/cobra"
 )
