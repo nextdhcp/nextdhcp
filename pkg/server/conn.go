@@ -114,6 +114,19 @@ func (c *listener) IP() net.IP {
 }
 
 func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte) error {
+	data, err := c.preparePacket(c.iface.HardwareAddr, c.IP(), dstMAC, dstIP, payload)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.rawConn.WriteTo(data, &raw.Addr{
+		HardwareAddr: dstMAC,
+	})
+
+	return err
+}
+
+func (c *listener) preparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAddr, dstIP net.IP, payload []byte) ([]byte, error) {
 	buf := gopacket.NewSerializeBuffer()
 
 	opts := gopacket.SerializeOptions{
@@ -123,14 +136,14 @@ func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte
 
 	ethernet := &layers.Ethernet{
 		DstMAC:       dstMAC,
-		SrcMAC:       c.iface.HardwareAddr,
+		SrcMAC:       srcMAC,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
 	ip := &layers.IPv4{
 		Version:  4,
 		TTL:      255,
-		SrcIP:    c.ip,
+		SrcIP:    srcIP,
 		DstIP:    dstIP,
 		Protocol: layers.IPProtocolUDP,
 		Flags:    layers.IPv4DontFragment,
@@ -150,15 +163,10 @@ func (c *listener) SendRaw(dstIP net.IP, dstMAC net.HardwareAddr, payload []byte
 		gopacket.Payload(payload))
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	data := buf.Bytes()
-	_, err = c.rawConn.WriteTo(data, &raw.Addr{
-		HardwareAddr: dstMAC,
-	})
-
-	return err
+	return buf.Bytes(), nil
 }
 
 // Close closes both connections and returns the first error encountered
