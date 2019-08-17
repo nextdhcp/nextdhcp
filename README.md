@@ -2,4 +2,3 @@
 <p align="center"><i>A next-generation scriptable DHCP server</i></p>
 <hr>
 
-Not much yet. Come back later.

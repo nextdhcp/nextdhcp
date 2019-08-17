@@ -1,31 +1,38 @@
-home = subnet("10.8.254.0/32", {
-    range = {"10.8.1.100", "10.8.1.199"},
-    lease_time = 300,
-    options = {
-        routers = {"10.8.1.254"},
-        broadcast_address = "10.8.1.255",
-        domain_names = {"paz.dobnet.lan.", "dobnet.lan."},
-        domain_name_servers = {"10.89.1.254"}
+plugin "etcd-database" {
+    path = "path/to/plugin.so",
+    endpoint = "http://localhost:4001/"
+}
+
+subnet "10.1.0.1/24" {
+    database = "etcd-database",
+    
+    ranges = {
+        {"10.1.0.100", "10.1.0.200"},
     }
-})
 
-declare_option("architecture", 93, TYPE_UINT16)
+    options = {
+        dns = {"10.1.0.1", "8.8.8.8", "1.1.1.1"},
+        routers = {"10.1.0.1"},
+    }
+    
+    leaseTime = "10m",
+    -- leaseTime = 600
 
-local function handleRequest(request)
-    local opts = {}
+    -- offer is called for each DHCPDISCOVER message
+    -- the handler will fill in all information that has not been set by the lua handler
+    -- already. Thus, if no offer handler is defined IP addresses will be leased based on
+    -- configured ranges
+    offer = function(ctx, discover, offer)
+        -- silently drop DHCPDISCOVER requests from de:ad:be:ef:00:00
+        if discover.hardware_address == "de:ad:be:ef:00:00" then
+            ctx:drop()
+            return
+        end
 
-    if request.architecture == 0x0007 then
-        opts.filename = "/grub/x86_64-efi/core.fi"
-    else
-        opts.filename = "/grub/i386-pc/core.0"
-    end
-
-    return assign(home, opts)
-end
-
-return {
-    on_discover = function()
-
+        if discover.hardware_address == "aa:bb:cc:dd:ee:ff" then
+            offer.ip = "10.1.0.2"
+            offer.options.next_server = "10.1.0.100"
+            offer.options.filename = "boot/pxe.0"
+        end
     end,
-    on_request = handleRequest,
 }
