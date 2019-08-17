@@ -47,9 +47,10 @@ func Test_SubnetManager_subnet_register_valid(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Len(t, m.subnets, 1)
-	assert.NotNil(t, m.subnets[0].Offer)
 
 	// we cannot check equality on functions so
+	assert.NotNil(t, m.subnets[0].Offer)
+	// and
 	m.subnets[0].Offer = nil
 
 	assert.Equal(t, Subnet{
