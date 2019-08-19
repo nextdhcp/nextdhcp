@@ -114,13 +114,21 @@ var (
 	TypeStringList = &KnownType{stringListOption, stringsToLua}
 )
 
+// Type names for known types
+const (
+	TypeNameIP         = "TYPE_IP"
+	TypeNameIPList     = "TYPE_IP_LIST"
+	TypeNameString     = "TYPE_STRING"
+	TypeNameStringList = "TYPE_STRING_LIST"
+)
+
 // typeKeyToType is used to expose the known types to the lua VM so
 // users can extend and add missing type definitions
 var typeKeyToType = map[string]*KnownType{
-	"TYPE_IP":          TypeIP,
-	"TYPE_IP_LIST":     TypeIPList,
-	"TYPE_STRING":      TypeString,
-	"TYPE_STRING_LIST": TypeStringList,
+	TypeNameIP:         TypeIP,
+	TypeNameIPList:     TypeIPList,
+	TypeNameString:     TypeString,
+	TypeNameStringList: TypeStringList,
 }
 
 var optionNames = map[string]dhcpv4.OptionCode{
