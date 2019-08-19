@@ -31,12 +31,6 @@ type KnownType struct {
 	FromValue ToLuaFunc
 }
 
-type OptionType struct {
-	Factory    interface{}
-	Code       dhcpv4.OptionCode
-	ToLuaValue ToLuaFunc
-}
-
 func ipOption(s string) (dhcpv4.OptionValue, error) {
 	i := net.ParseIP(s)
 	if i == nil {
@@ -120,6 +114,8 @@ var (
 	TypeStringList = &KnownType{stringListOption, stringsToLua}
 )
 
+// typeKeyToType is used to expose the known types to the lua VM so
+// users can extend and add missing type definitions
 var typeKeyToType = map[string]*KnownType{
 	"TYPE_IP":          TypeIP,
 	"TYPE_IP_LIST":     TypeIPList,
