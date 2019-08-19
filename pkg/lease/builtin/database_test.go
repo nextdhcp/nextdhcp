@@ -169,10 +169,25 @@ func Test_Database_Leases(t *testing.T) {
 	leases, err := db.Leases(ctx)
 	assert.Nil(t, err)
 	assert.Len(t, leases, 2)
-	assert.Equal(t, leases[0].Client, *defaultClient)
-	assert.Equal(t, leases[0].Address, net.IP{192, 168, 0, 10})
-	assert.Equal(t, leases[1].Client, *defaultClient)
-	assert.Equal(t, leases[1].Address, net.IP{192, 168, 0, 11})
+
+	has10 := false
+	has11 := false
+
+	for _, l := range leases {
+		switch l.Address.String() {
+		case "192.168.0.10":
+			has10 = true
+		case "192.168.0.11":
+			has11 = true
+		default:
+			t.Fail()
+		}
+
+		assert.Equal(t, l.Client, *defaultClient)
+	}
+
+	assert.True(t, has10)
+	assert.True(t, has11)
 
 	// Leases should return a deep clone of the lease
 	key, _ := iprange.IP2Int(net.IP{192, 168, 0, 10})
@@ -193,10 +208,26 @@ func Test_Database_ReservedAddresses(t *testing.T) {
 	leases, err := db.ReservedAddresses(ctx)
 	assert.Nil(t, err)
 	assert.Len(t, leases, 2)
-	assert.Equal(t, leases[0].Client, *defaultClient)
-	assert.Equal(t, leases[0].IP, net.IP{192, 168, 0, 10})
-	assert.Equal(t, leases[1].Client, *defaultClient)
-	assert.Equal(t, leases[1].IP, net.IP{192, 168, 0, 11})
+
+	has10 := false
+	has11 := false
+
+	for _, l := range leases {
+		switch l.IP.String() {
+		case "192.168.0.10":
+			has10 = true
+		case "192.168.0.11":
+			has11 = true
+		default:
+			t.Fail()
+		}
+
+		assert.Equal(t, l.Client, *defaultClient)
+	}
+
+	assert.True(t, has10)
+	assert.True(t, has11)
+
 }
 
 func Test_Database_Reserve(t *testing.T) {
