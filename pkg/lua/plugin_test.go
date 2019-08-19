@@ -38,7 +38,7 @@ func Test_PluginManager_plugin_register_valid(t *testing.T) {
 	`)
 	assert.NoError(t, err)
 
-	assert.Len(t, p.plugins, 1)
+	assert.Len(t, p.Plugins(), 1)
 
 	assert.Equal(t, PluginConfig{
 		Name: "test",
@@ -47,5 +47,19 @@ func Test_PluginManager_plugin_register_valid(t *testing.T) {
 			"SomeOtherOption":  "other",
 			"YetAnotherOption": float64(2),
 		},
-	}, p.plugins[0])
+	}, p.Plugins()[0])
+}
+
+func Test_PluginManager_plugin_register_invalid(t *testing.T) {
+	vm, _ := getPluginTestVM(t)
+
+	assert.Error(t, vm.DoString(`plugin()`))
+	assert.Error(t, vm.DoString(`plugin(nil)`))
+
+	assert.Error(t, vm.DoString(`plugin "name" ()`))
+	assert.Error(t, vm.DoString(`plugin "name" ("")`))
+	assert.Error(t, vm.DoString(`plugin "name" {1, 2}`))
+	assert.Error(t, vm.DoString(`plugin "name" {{} = "test"}`))
+	assert.Error(t, vm.DoString(`plugin "name" {}`))
+	assert.Error(t, vm.DoString(`plugin "name" {path = 2}`))
 }

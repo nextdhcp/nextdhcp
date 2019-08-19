@@ -46,12 +46,13 @@ func Test_SubnetManager_subnet_register_valid(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	assert.Len(t, m.subnets, 1)
+	assert.Len(t, m.Subnets(), 1)
 
 	// we cannot check equality on functions so
-	assert.NotNil(t, m.subnets[0].Offer)
+	assert.NotNil(t, m.Subnets()[0].Offer)
 	// and
-	m.subnets[0].Offer = nil
+	subnet := m.Subnets()[0]
+	subnet.Offer = nil
 
 	assert.Equal(t, Subnet{
 		IP: net.IP{10, 1, 0, 1}.To16(),
@@ -69,5 +70,17 @@ func Test_SubnetManager_subnet_register_valid(t *testing.T) {
 			},
 			LeaseTime: "10m",
 		},
-	}, m.subnets[0])
+	}, subnet)
+}
+
+func Test_SubnetManager_subnet_register_invalid(t *testing.T) {
+	vm, _ := getTestVM(t)
+
+	assert.Error(t, vm.DoString(`subnet()`))
+	assert.Error(t, vm.DoString(`subnet "10.1.0.1"`))
+	assert.Error(t, vm.DoString(`subnet "10.1.0.1/84"`))
+
+	assert.Error(t, vm.DoString(`subnet "10.1.0.1/24" ()`))
+	assert.Error(t, vm.DoString(`subnet "10.1.0.1/24" nil`))
+	assert.Error(t, vm.DoString(`subnet "10.1.0.1/24" {1, 2}`))
 }
