@@ -172,10 +172,12 @@ func Test_Database_Leases(t *testing.T) {
 
 	has10 := false
 	has11 := false
+	idx10 := -1
 
-	for _, l := range leases {
+	for i, l := range leases {
 		switch l.Address.String() {
 		case "192.168.0.10":
+			idx10 = i
 			has10 = true
 		case "192.168.0.11":
 			has11 = true
@@ -186,6 +188,8 @@ func Test_Database_Leases(t *testing.T) {
 		assert.Equal(t, l.Client, *defaultClient)
 	}
 
+	assert.NotEqual(t, -1, idx10)
+
 	assert.True(t, has10)
 	assert.True(t, has11)
 
@@ -195,7 +199,7 @@ func Test_Database_Leases(t *testing.T) {
 	// change the first byte of net.IP
 	db.leasedAddresses[key].Address[0] = 100
 	// now the must not match anymore
-	assert.Equal(t, leases[0].Address, net.IP{192, 168, 0, 10})
+	assert.Equal(t, leases[idx10].Address, net.IP{192, 168, 0, 10})
 }
 
 func Test_Database_ReservedAddresses(t *testing.T) {
