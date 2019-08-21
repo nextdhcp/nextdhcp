@@ -37,6 +37,9 @@ var (
 	float64Type = reflect.TypeOf(float64(1))
 )
 
+// FromLuaValue converts the value to it's DHCP option representation. Note that value is automatically
+// converted to the go-type expected by the configured KnownType factory function. An error is returned
+// if value is not convertible to the expected type
 func (k KnownType) FromLuaValue(L *lua.LState, value lua.LValue) (dhcpv4.OptionValue, error) {
 	goVal := gluamapper.ToGoValue(value, gluamapper.Option{NameFunc: gluamapper.ToUpperCamelCase})
 
