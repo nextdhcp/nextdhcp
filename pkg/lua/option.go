@@ -3,9 +3,11 @@ package lua
 import (
 	"errors"
 	"net"
+	"reflect"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/yuin/gluamapper"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -29,6 +31,61 @@ type ToLuaFunc func(*lua.LState, dhcpv4.OptionValue) (lua.LValue, error)
 type KnownType struct {
 	ToValue   interface{}
 	FromValue ToLuaFunc
+}
+
+var (
+	float64Type = reflect.TypeOf(float64(1))
+)
+
+func (k KnownType) FromLuaValue(L *lua.LState, value lua.LValue) (dhcpv4.OptionValue, error) {
+	goVal := gluamapper.ToGoValue(value, gluamapper.Option{NameFunc: gluamapper.ToUpperCamelCase})
+
+	if goVal == nil {
+		return nil, errors.New("invalid value")
+	}
+
+	if fn, ok := k.ToValue.(StringFactory); ok {
+		str, ok := goVal.(string)
+		if !ok {
+			return nil, errors.New("invalid type")
+		}
+		return fn(str)
+	}
+
+	if fn, ok := k.ToValue.(StringListFactory); ok {
+		slice, ok := goVal.([]interface{})
+		if !ok {
+			return nil, errors.New("invalid slice type")
+		}
+
+		var s []string
+		for _, v := range slice {
+			sv, ok := v.(string)
+			if !ok {
+				return nil, errors.New("invalid slice index type")
+			}
+
+			s = append(s, sv)
+		}
+
+		return fn(s)
+	}
+
+	if fn, ok := k.ToValue.(NumberFactory); ok {
+		if !reflect.TypeOf(goVal).ConvertibleTo(float64Type) {
+			return nil, errors.New("invalid type for number")
+		}
+
+		f, ok := reflect.ValueOf(goVal).Convert(float64Type).Interface().(float64)
+		if !ok {
+			return nil, errors.New("invalid type for number")
+		}
+
+		return fn(f)
+	}
+	// TODO(ppacher): add support for NumberList
+
+	return nil, errors.New("unsupported known type")
 }
 
 func ipOption(s string) (dhcpv4.OptionValue, error) {
@@ -102,16 +159,16 @@ func durationOption(s string) (dhcpv4.OptionValue, error) {
 
 var (
 	// TypeIP represents an IP type
-	TypeIP = &KnownType{ipOption, ipToLua}
+	TypeIP = &KnownType{StringFactory(ipOption), ipToLua}
 
 	// TypeIPList represents a list of IP addresses
-	TypeIPList = &KnownType{ipListOption, ipListToLua}
+	TypeIPList = &KnownType{StringListFactory(ipListOption), ipListToLua}
 
 	// TypeString represents a String type
-	TypeString = &KnownType{stringOption, stringToLua}
+	TypeString = &KnownType{StringFactory(stringOption), stringToLua}
 
 	// TypeStringList represents a list of strings
-	TypeStringList = &KnownType{stringListOption, stringsToLua}
+	TypeStringList = &KnownType{StringListFactory(stringListOption), stringsToLua}
 )
 
 // Type names for known types
