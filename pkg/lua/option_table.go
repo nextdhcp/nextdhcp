@@ -7,7 +7,7 @@ import (
 
 // prepareOptionTable sets a metatable to tbl with a newindex
 // field that parses values for DHCP options
-func prepareOptionTable(L *lua.LState, tbl *lua.LTable, rcv map[dhcpv4.OptionCode]dhcpv4.OptionValue) error {
+func prepareOptionTable(L *lua.LState, tbl *lua.LTable, rcv map[dhcpv4.OptionCode]dhcpv4.OptionValue, opts *OptionModule) error {
 	mt := L.NewTable()
 
 	mt.RawSetString("__newindex", L.NewFunction(func(L *lua.LState) int {
@@ -25,22 +25,14 @@ func prepareOptionTable(L *lua.LState, tbl *lua.LTable, rcv map[dhcpv4.OptionCod
 			return 0
 		}
 
-		opCode, ok := optionNames[k]
+		fn, opCode, ok := opts.TypeForName(k)
 		if !ok {
-			L.ArgError(2, "unknown option name")
-			return 0
+			L.ArgError(2, "invalid option name")
 		}
 
-		// nil is used to delete an option
+		//
 		if v == lua.LNil {
 			delete(rcv, opCode)
-			return 0
-		}
-
-		// get type factory
-		fn, ok := optionTypes[opCode]
-		if !ok {
-			L.ArgError(2, "unknown option name")
 			return 0
 		}
 

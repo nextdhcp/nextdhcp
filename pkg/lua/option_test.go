@@ -67,7 +67,9 @@ func Test_OptionTable_setter(t *testing.T) {
 	tbl := vm.NewTable()
 	rcv := make(map[dhcpv4.OptionCode]dhcpv4.OptionValue)
 
-	assert.NoError(t, prepareOptionTable(vm, tbl, rcv))
+	opts := NewOptionModule(optionNames, optionTypes)
+
+	assert.NoError(t, prepareOptionTable(vm, tbl, rcv, opts))
 	vm.SetGlobal("options", tbl)
 
 	err := vm.DoString(`options.netmask = "255.255.242.0"`)

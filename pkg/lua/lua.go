@@ -14,6 +14,7 @@ type Runner struct {
 	vm      *lua.LState
 	plugins *PluginManager
 	subnets *SubnetManager
+	options *OptionModule
 }
 
 // NewFromReader creates and returns a new lua runner from the given input
@@ -28,12 +29,16 @@ func NewFromReader(input io.Reader) (*Runner, error) {
 		vm:      lua.NewState(),
 		plugins: &PluginManager{},
 		subnets: &SubnetManager{},
+		options: NewOptionModule(optionNames, optionTypes),
 	}
 
 	if err := r.plugins.Setup(r.vm); err != nil {
 		return nil, err
 	}
 	if err := r.subnets.Setup(r.vm); err != nil {
+		return nil, err
+	}
+	if err := r.options.Setup(r.vm); err != nil {
 		return nil, err
 	}
 

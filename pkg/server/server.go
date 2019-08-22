@@ -2,16 +2,16 @@ package server
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log"
 	"net"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/pkg/lease"
 	"golang.org/x/sync/errgroup"
 )
+
+// HandlerFunc handles incoming DHCP requests. The returned DHCP message is sent to the client
+type HandlerFunc func(ctx context.Context, request *Request) *dhcpv4.DHCPv4
 
 // Server is a DHCPv4 server
 type Server interface {
@@ -26,32 +26,16 @@ type server struct {
 	listens []net.IP // array of addresses to listen
 	conns   []net.PacketConn
 
-	provider lease.Database
+	handler HandlerFunc
 
 	grp *errgroup.Group
 }
 
-// Option is a server option and use to configure the DHCP4 server
-type Option func(s *server)
-
-// WithListen configures one or more listen addresses for the DHCP server
-func WithListen(l ...net.IP) Option {
-	return func(s *server) {
-		s.listens = append(s.listens, l...)
-	}
-}
-
 // New creates a new DHCPv4 server
-func New(opts ...Option) Server {
+func New(handler HandlerFunc, listenIPs []net.IP) Server {
 	s := &server{
-		provider: lease.MustOpen("internal", map[string]interface{}{
-			"network": "10.100.0.1/24",
-			"ranges":  []interface{}{"10.100.0.100 - 10.100.0.150"},
-		}),
-	}
-
-	for _, opt := range opts {
-		opt(s)
+		handler: handler,
+		listens: listenIPs,
 	}
 
 	return s
@@ -110,37 +94,63 @@ func (s *server) serveConn(ctx context.Context, conn Conn) {
 				return err
 			}
 
-			msg := req.Message
-
-			peerAddr := req.Peer
-
-			if peerAddr.IP == nil || peerAddr.IP.Equal(net.IPv4zero) {
-				peerAddr = &net.UDPAddr{
-					IP:   net.IPv4bcast,
-					Port: peerAddr.Port,
+			resp := s.handler(ctx, req)
+			if resp != nil {
+				if !req.Message.GatewayIPAddr.IsUnspecified() {
+					// this message is coming from an relay agent, sent it back
+					// using normal UDP
+					// TODO(ppacher): check for RFC compliance
+					_, err = conn.UDP().WriteTo(resp.ToBytes(), &net.UDPAddr{
+						IP:   req.Message.GatewayIPAddr,
+						Port: dhcpv4.ClientPort,
+					})
+				} else {
+					err = conn.SendDirectUnicast(resp.YourIPAddr, req.Message.ClientHWAddr, resp.ToBytes())
 				}
+
+				if err != nil {
+					log.Println("failed to send DHCP response: ", err.Error())
+				} else {
+					log.Println("served DHCP request from ", req.Message.ClientHWAddr.String())
+				}
+			} else {
+				log.Println("dropping DHCP request from ", req.Message.ClientHWAddr.String())
 			}
 
-			log.Printf("got request from %s: %s", peerAddr.String(), msg.ClientHWAddr.String())
-			log.Printf(msg.Summary())
-			// TODO(ppacher): handle request
+			/*
+				msg := req.Message
 
-			switch msg.MessageType() {
-			case dhcpv4.MessageTypeDiscover:
-				err = s.handleDiscovery(conn, peerAddr, msg)
-			case dhcpv4.MessageTypeRequest:
-				err = s.handleRequest(conn, peerAddr, msg)
-			default:
-				err = errors.New("unsupported message type")
-			}
+				peerAddr := req.Peer
 
-			if err != nil {
-				log.Printf("failed to handle DHCP request: %s", err)
-			}
+				if peerAddr.IP == nil || peerAddr.IP.Equal(net.IPv4zero) {
+					peerAddr = &net.UDPAddr{
+						IP:   net.IPv4bcast,
+						Port: peerAddr.Port,
+					}
+				}
+
+				log.Printf("got request from %s: %s", peerAddr.String(), msg.ClientHWAddr.String())
+				log.Printf(msg.Summary())
+				// TODO(ppacher): handle request
+
+				switch msg.MessageType() {
+				case dhcpv4.MessageTypeDiscover:
+					err = s.handleDiscovery(conn, peerAddr, msg)
+				case dhcpv4.MessageTypeRequest:
+					err = s.handleRequest(conn, peerAddr, msg)
+				default:
+					err = errors.New("unsupported message type")
+				}
+
+				if err != nil {
+					log.Printf("failed to handle DHCP request: %s", err)
+				}
+			*/
 		}
 	})
 }
 
+/*
 // https://tools.ietf.org/html/rfc2131#section-4.3.1
 func (s *server) handleDiscovery(conn Conn, peer net.Addr, msg *dhcpv4.DHCPv4) error {
 	cli := lease.Client{
@@ -237,6 +247,7 @@ func (s *server) handleRequest(conn Conn, peer net.Addr, msg *dhcpv4.DHCPv4) err
 	return nil
 	//return conn.SendDirectUnicast(resp.YourIPAddr, resp.ClientHWAddr, resp.ToBytes())
 }
+*/
 
 func (s *server) Wait() error {
 	return s.grp.Wait()

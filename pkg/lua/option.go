@@ -245,11 +245,21 @@ var optionTypes = map[dhcpv4.OptionCode]*KnownType{
 	dhcpv4.OptionUserClassInformation: TypeStringList,
 }
 
-// GetOptionTypeMap returns a map of dhcpv4 option-code to KnownType
-func GetOptionTypeMap() map[dhcpv4.OptionCode]*KnownType {
+// GetBuiltinOptionTypes returns a map of dhcpv4 option-code to KnownType
+func GetBuiltinOptionTypes() map[dhcpv4.OptionCode]*KnownType {
 	m := make(map[dhcpv4.OptionCode]*KnownType)
 	for key, value := range optionTypes {
 		m[key] = &(*value)
+	}
+
+	return m
+}
+
+// GetBuiltinOptionNames returns a map of option name to option-code
+func GetBuiltinOptionNames() map[string]dhcpv4.OptionCode {
+	m := make(map[string]dhcpv4.OptionCode)
+	for key, value := range optionNames {
+		m[key] = value
 	}
 
 	return m
