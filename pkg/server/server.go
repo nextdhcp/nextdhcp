@@ -11,7 +11,7 @@ import (
 )
 
 // HandlerFunc handles incoming DHCP requests. The returned DHCP message is sent to the client
-type HandlerFunc func(ctx context.Context, request *Request) *dhcpv4.DHCPv4
+type HandlerFunc func(ctx context.Context, iface net.Interface, peer *net.UDPAddr, hwAddr net.HardwareAddr, req *dhcpv4.DHCPv4) *dhcpv4.DHCPv4
 
 // Server is a DHCPv4 server
 type Server interface {
@@ -94,28 +94,7 @@ func (s *server) serveConn(ctx context.Context, conn Conn) {
 				return err
 			}
 
-			resp := s.handler(ctx, req)
-			if resp != nil {
-				if !req.Message.GatewayIPAddr.IsUnspecified() {
-					// this message is coming from an relay agent, sent it back
-					// using normal UDP
-					// TODO(ppacher): check for RFC compliance
-					_, err = conn.UDP().WriteTo(resp.ToBytes(), &net.UDPAddr{
-						IP:   req.Message.GatewayIPAddr,
-						Port: dhcpv4.ClientPort,
-					})
-				} else {
-					err = conn.SendDirectUnicast(resp.YourIPAddr, req.Message.ClientHWAddr, resp.ToBytes())
-				}
-
-				if err != nil {
-					log.Println("failed to send DHCP response: ", err.Error())
-				} else {
-					log.Println("served DHCP request from ", req.Message.ClientHWAddr.String())
-				}
-			} else {
-				log.Println("dropping DHCP request from ", req.Message.ClientHWAddr.String())
-			}
+			go s.serve(ctx, conn, req)
 
 			/*
 				msg := req.Message
@@ -148,6 +127,33 @@ func (s *server) serveConn(ctx context.Context, conn Conn) {
 			*/
 		}
 	})
+}
+
+func (s *server) serve(ctx context.Context, conn Conn, req *Request) {
+	var err error
+
+	resp := s.handler(ctx, req.Iface, req.Peer, req.PeerHwAddr, req.Message)
+	if resp != nil {
+		if !req.Message.GatewayIPAddr.IsUnspecified() {
+			// this message is coming from an relay agent, sent it back
+			// using normal UDP
+			// TODO(ppacher): check for RFC compliance
+			_, err = conn.UDP().WriteTo(resp.ToBytes(), &net.UDPAddr{
+				IP:   req.Message.GatewayIPAddr,
+				Port: dhcpv4.ClientPort,
+			})
+		} else {
+			err = conn.SendDirectUnicast(resp.YourIPAddr, req.Message.ClientHWAddr, resp.ToBytes())
+		}
+
+		if err != nil {
+			log.Println("failed to send DHCP response: ", err.Error())
+		} else {
+			log.Println("served DHCP request from ", req.Message.ClientHWAddr.String())
+		}
+	} else {
+		log.Println("dropping DHCP request from ", req.Message.ClientHWAddr.String())
+	}
 }
 
 /*

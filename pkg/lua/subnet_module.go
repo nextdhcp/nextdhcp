@@ -13,6 +13,9 @@ type SubnetConfig struct {
 	// Database is the lease database to use. Defaults to internal
 	Database string `mapstructure:"database"`
 
+	// DatabaseOptions may holds additional database options passed to lease.Open()
+	DatabaseOptions map[string]interface{} `mapstructure:"databaseArgs"`
+
 	// Ranges of IP address that can be leased to clients on this subnet
 	Ranges [][]string `mapstructure:"ranges"`
 

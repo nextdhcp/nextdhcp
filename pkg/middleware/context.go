@@ -14,13 +14,32 @@ type Context struct {
 	// Resp is the prepared DHCPv4 response. If you need to replace it manually use Replace()
 	Resp *dhcpv4.DHCPv4
 
-	ctx        context.Context  // embedded request context for cancellation
-	req        *dhcpv4.DHCPv4   // holds the request served
-	shouldSkip bool             // set to true if we should skip the entire request
-	peer       net.Addr         // peer is the peer that send the request
-	peerHwAddr net.HardwareAddr // the hardware (MAC) address of the peer
-	iface      net.Interface    // the interface that received the request
-	db         lease.Database   // the lease database assigned to the subnet/interface
+	ctx        context.Context             // embedded request context for cancellation
+	req        *dhcpv4.DHCPv4              // holds the request served
+	shouldSkip bool                        // set to true if we should skip the entire request
+	peer       net.Addr                    // peer is the peer that send the request
+	peerHwAddr net.HardwareAddr            // the hardware (MAC) address of the peer
+	iface      net.Interface               // the interface that received the request
+	db         lease.Database              // the lease database assigned to the subnet/interface
+	values     map[interface{}]interface{} // may be used by middlewares to store
+}
+
+func NewContext(ctx context.Context, req *dhcpv4.DHCPv4, peer net.Addr, hw net.HardwareAddr, iface net.Interface, db lease.Database) (*Context, error) {
+	resp, err := dhcpv4.NewReplyFromRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Context{
+		Resp:       resp,
+		ctx:        ctx,
+		req:        req,
+		peer:       peer,
+		peerHwAddr: hw,
+		iface:      iface,
+		db:         db,
+		values:     make(map[interface{}]interface{}),
+	}, nil
 }
 
 // Peer returns the peer that sent the request. Note that for DHCPv4 requests sent by clients
@@ -85,4 +104,20 @@ func (c *Context) Replace(msgType dhcpv4.MessageType, modifiers ...dhcpv4.Modifi
 // request
 func (c *Context) SkipRequest() {
 	c.shouldSkip = true
+}
+
+// ShouldSkip returns true if the request should be skipped
+func (c *Context) ShouldSkip() bool {
+	return c.shouldSkip
+}
+
+// Store an arbitrary value inside the context
+func (c *Context) Store(key, value interface{}) {
+	c.values[key] = value
+}
+
+// Load an arbitrary value from the the context
+func (c *Context) Load(key interface{}) (interface{}, bool) {
+	val, ok := c.values[key]
+	return val, ok
 }
