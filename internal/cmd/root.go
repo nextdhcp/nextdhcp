@@ -9,11 +9,13 @@ import (
 
 	"github.com/ppacher/dhcp-ng/internal/utils"
 	"github.com/ppacher/dhcp-ng/pkg/handler"
-	_ "github.com/ppacher/dhcp-ng/pkg/lease/builtin"
 	"github.com/ppacher/dhcp-ng/pkg/lua"
 	"github.com/ppacher/dhcp-ng/pkg/server"
 
 	"github.com/spf13/cobra"
+
+	// load the builtin database
+	_ "github.com/ppacher/dhcp-ng/pkg/lease/builtin"
 )
 
 var (

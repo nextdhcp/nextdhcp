@@ -24,6 +24,7 @@ type Context struct {
 	values     map[interface{}]interface{} // may be used by middlewares to store
 }
 
+// NewContext creates a new middleware context
 func NewContext(ctx context.Context, req *dhcpv4.DHCPv4, peer net.Addr, hw net.HardwareAddr, iface net.Interface, db lease.Database) (*Context, error) {
 	resp, err := dhcpv4.NewReplyFromRequest(req)
 	if err != nil {
