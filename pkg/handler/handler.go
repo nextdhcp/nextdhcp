@@ -87,7 +87,7 @@ func (d *v4handler) Serve(ctx context.Context, iface net.Interface, peer *net.UD
 		return nil
 	}
 
-	resp, err := d.handlePreRequest(ctx, req, s)
+	resp, err := d.prepareResponse(ctx, req, s)
 	if err != nil {
 		log.Println("failed to serve request: ", err.Error())
 		return nil
@@ -114,47 +114,17 @@ func (d *v4handler) Serve(ctx context.Context, iface net.Interface, peer *net.UD
 	return serveCtx.Resp
 }
 
-func (d *v4handler) handlePreRequest(ctx context.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error) {
+func (d *v4handler) prepareResponse(ctx context.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error) {
 	switch req.MessageType() {
 	case dhcpv4.MessageTypeDiscover:
-		return d.handlePreDiscover(ctx, req, s)
+		return prepareDHCPv4Offer(ctx, req, s)
+	case dhcpv4.MessageTypeRequest:
+		return prepareDHCPv4RequestReply(ctx, req, s)
+	case dhcpv4.MessageTypeRelease:
+		return handleDHCPv4Release(ctx, req, s)
+	case dhcpv4.MessageTypeDecline:
+		return nil, fmt.Errorf("decline messages are denied")
 	}
 
 	return nil, fmt.Errorf("unsupported message type %s", req.MessageType().String())
-}
-
-func (d *v4handler) handlePreDiscover(ctx context.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error) {
-
-	cli := lease.Client{
-		HwAddr:   req.ClientHWAddr,
-		Hostname: req.HostName(),
-	}
-
-	var ip net.IP
-	var err error
-
-	// TODO(ppacher): if RequestedIPAddress != nil try to reserve that one
-
-	if ip, err = s.Database.FindAddress(ctx, &cli); err != nil {
-		return nil, err
-	}
-
-	resp, err := dhcpv4.NewReplyFromRequest(req,
-		dhcpv4.WithMessageType(dhcpv4.MessageTypeOffer),
-		dhcpv4.WithYourIP(ip),
-		dhcpv4.WithServerIP(s.IP),
-		dhcpv4.WithNetmask(s.Network.Mask),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	resp.UpdateOption(dhcpv4.OptServerIdentifier(s.IP))
-	resp.UpdateOption(dhcpv4.OptIPAddressLeaseTime(s.LeaseTime))
-
-	for code, value := range s.Options {
-		resp.UpdateOption(dhcpv4.OptGeneric(code, value.ToBytes()))
-	}
-
-	return resp, nil
 }

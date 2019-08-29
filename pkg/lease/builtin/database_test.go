@@ -273,3 +273,23 @@ func Test_Database_Reserve(t *testing.T) {
 	assert.Equal(t, net.IP{192, 168, 0, 14}, db.reservedAddresses[key].IP)
 	assert.Equal(t, defaultClient.HwAddr, db.reservedAddresses[key].Client.HwAddr)
 }
+
+func Test_Database_DeleteReservation(t *testing.T) {
+	db := getTestDatabase(t)
+	addReservedIP(db, "10.1.1.1", defaultClientMAC)
+	assert.NoError(t, db.DeleteReservation(ctx, net.IP{10, 1, 1, 1}, defaultClient))
+
+	// no such ip
+	db = getTestDatabase(t)
+	assert.Error(t, db.DeleteReservation(ctx, net.IP{10, 1, 1, 1}, defaultClient))
+
+	// invalid ip
+	db = getTestDatabase(t)
+	assert.Error(t, db.DeleteReservation(ctx, net.IP{100, 1, 1, 1, 200}, defaultClient))
+	assert.Error(t, db.DeleteReservation(ctx, net.IP{}, defaultClient))
+
+	// wrong mac
+	db = getTestDatabase(t)
+	addReservedIP(db, "10.1.1.1", "aa:bb:00:cc:11:dd")
+	assert.Error(t, db.DeleteReservation(ctx, net.IP{10, 1, 1, 1}, defaultClient))
+}

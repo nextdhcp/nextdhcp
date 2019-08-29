@@ -109,7 +109,7 @@ func (db *database) FindAddress(ctx context.Context, cli *lease.Client) (net.IP,
 		}
 	}
 
-	return nil, errors.New("no leasable addresses")
+	return nil, lease.ErrNoIPAvailable
 }
 
 func (db *database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) error {
@@ -124,7 +124,7 @@ func (db *database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 
 	key, ok := iprange.IP2Int(ip)
 	if !ok {
-		return errors.New("invalid ip address")
+		return lease.ErrInvalidAddress
 	}
 
 	if l, ok := db.leasedAddresses[key]; ok {
@@ -132,7 +132,7 @@ func (db *database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 			return nil // already leased to the client
 		}
 
-		return errors.New("address already leased")
+		return lease.ErrAddressInUse
 	}
 
 	if r, ok := db.reservedAddresses[key]; ok {
@@ -145,7 +145,7 @@ func (db *database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 			return nil // already reserved for client
 		}
 
-		return errors.New("address already reserved")
+		return lease.ErrAddressReserved
 	}
 
 	// TODO(ppacher): should we check for existing client reservations?
@@ -175,7 +175,7 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 
 	key, ok := iprange.IP2Int(ip)
 	if !ok {
-		return 0, errors.New("invalid IP address")
+		return 0, lease.ErrInvalidAddress
 	}
 
 	if l, ok := db.leasedAddresses[key]; ok {
@@ -186,7 +186,7 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			return l.Expires.Sub(time.Now()), nil
 		}
 
-		return 0, errors.New("IP address in use")
+		return 0, lease.ErrAddressInUse
 	}
 
 	if r, ok := db.reservedAddresses[key]; ok {
@@ -208,10 +208,10 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			return leaseTime, nil
 		}
 
-		return 0, errors.New("IP address reserved for a different client")
+		return 0, lease.ErrAddressReserved
 	}
 
-	return 0, errors.New("no reservation for IP address available")
+	return 0, lease.ErrNoIPAvailable
 }
 
 func (db *database) Release(ctx context.Context, ip net.IP) error {
@@ -225,10 +225,10 @@ func (db *database) Release(ctx context.Context, ip net.IP) error {
 		return errors.New("invalid IPv4 address")
 	}
 
-	lease, ok := db.leasedAddresses[key]
+	l, ok := db.leasedAddresses[key]
 	if ok {
 		delete(db.leasedAddresses, key)
-		delete(db.leasedAddressesByClient, lease.HwAddr.String())
+		delete(db.leasedAddressesByClient, l.HwAddr.String())
 
 		return nil
 	}
@@ -241,7 +241,7 @@ func (db *database) Release(ctx context.Context, ip net.IP) error {
 		return nil
 	}
 
-	return errors.New("unknown lease or reservation")
+	return lease.ErrNoIPAvailable
 }
 
 func (db *database) ReleaseClient(ctx context.Context, cli *lease.Client) error {
@@ -268,7 +268,7 @@ func (db *database) ReleaseClient(ctx context.Context, cli *lease.Client) error 
 		return nil
 	}
 
-	return errors.New("unknown lease or reservation")
+	return lease.ErrNoIPAvailable
 }
 
 func (db *database) AddRange(ranges ...*iprange.IPRange) error {
@@ -287,6 +287,32 @@ func (db *database) DeleteRange(ranges ...*iprange.IPRange) error {
 	for _, r := range ranges {
 		db.ranges = iprange.DeleteFrom(r, db.ranges)
 	}
+
+	return nil
+}
+
+func (db *database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease.Client) error {
+	db.l.Lock()
+	defer db.l.Unlock()
+
+	ipKey, ok := iprange.IP2Int(ip)
+	if !ok {
+		return lease.ErrInvalidAddress
+	}
+
+	reservation, ok := db.reservedAddresses[ipKey]
+	if !ok {
+		return lease.ErrNoIPAvailable
+	}
+
+	if cli != nil {
+		if reservation.Client.HwAddr.String() != cli.HwAddr.String() {
+			return errors.New("client MAC address mismatch")
+		}
+	}
+
+	delete(db.reservedAddresses, ipKey)
+	delete(db.reservedAddressesByClient, reservation.HwAddr.String())
 
 	return nil
 }

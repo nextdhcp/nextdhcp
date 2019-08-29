@@ -2,10 +2,25 @@ package lease
 
 import (
 	"context"
+	"errors"
 	"net"
 	"time"
 
 	"github.com/ppacher/dhcp-ng/pkg/lease/iprange"
+)
+
+var (
+	// ErrAddressInUse indicates that the requested IP address is already bound to a different client
+	ErrAddressInUse = errors.New("IP is already used by a different client")
+
+	// ErrAddressReserved indicates that the requested IP address is already reserved for a different client
+	ErrAddressReserved = errors.New("IP is already reserved for a different client")
+
+	// ErrNoIPAvailable indicates that no usable IP address have been found
+	ErrNoIPAvailable = errors.New("no IP address is available")
+
+	// ErrInvalidAddress indicates that the IP address is invalid
+	ErrInvalidAddress = errors.New("invalid IP address")
 )
 
 // Database describes a lease database interface
@@ -32,6 +47,9 @@ type Database interface {
 	// Release releases a previous client IP address lease. If no such lease exists the list
 	// of reserved IP addresses is checked and any reservation for the client is removed
 	Release(context.Context, net.IP) error
+
+	// DeleteReservation deletes a IP address reservation
+	DeleteReservation(context.Context, net.IP, *Client) error
 
 	// ReleaseClient releases all IP address leases or reservations for the given client
 	ReleaseClient(context.Context, *Client) error

@@ -64,7 +64,11 @@ func NewFromReader(input io.Reader) (*Runner, error) {
 		err = L.DoString(string(content))
 	})
 
-	return r, err
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
 // NewFromFile creates and returns a new Runner from the given input
