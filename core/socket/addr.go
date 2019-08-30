@@ -20,9 +20,9 @@ type Addr struct {
 	}
 }
 
-// Network returns "raw" and implements net.Addr
+// Network returns "upd(raw)" and implements net.Addr
 func (a *Addr) Network() string {
-	return "raw"
+	return "upd(raw)"
 }
 
 // String returns a string representation of the peer's address

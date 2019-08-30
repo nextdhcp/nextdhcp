@@ -2,11 +2,87 @@ package socket
 
 import (
 	"errors"
+	"fmt"
 	"net"
+	"syscall"
 	"time"
 
+	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/mdlayher/raw"
 )
+
+var (
+	rawListenPacket = func(iface *net.Interface) (net.PacketConn, error) {
+		// TODO(ppacher): use the BPF filter support to drop not-DHCP related
+		// packets
+		return raw.ListenPacket(iface, syscall.ETH_P_IP, nil)
+	}
+
+	udpListenPacket = func(ip net.IP, port int) (net.PacketConn, error) {
+		return net.ListenUDP("udp4", &net.UDPAddr{
+			IP:   ip,
+			Port: port,
+		})
+	}
+)
+
+func interfaceByIP(ip net.IP) (*net.Interface, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ifn := range ifaces {
+		addrs, err := ifn.Addrs()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, a := range addrs {
+			n, ok := a.(*net.IPNet)
+			if !ok {
+				// Not a IP network so we can safely skip it
+				continue
+			}
+
+			if n.Contains(ip) {
+				return &ifn, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("interface not found for IP %s", ip.String())
+}
+
+// ListenDHCP starts listening for DHCP requests on the given IP and interface
+// It opens a UDP and a AF_PACKET socket for communication
+func ListenDHCP(ip net.IP, iface *net.Interface) (net.PacketConn, error) {
+	// If not interface is provided try to lookup the correct one
+	if iface == nil {
+		var err error
+		iface, err = interfaceByIP(ip)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	udp, err := udpListenPacket(ip, dhcpv4.ServerPort)
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := rawListenPacket(iface)
+	if err != nil {
+		return nil, err
+	}
+
+	return &packetConn{
+		udp:   udp,
+		raw:   r,
+		iface: iface,
+		ip:    ip,
+	}, nil
+}
 
 // PacketConn implements net.PacketConn but utilizes a standard UDP and
 // and AF_PACKET socket
