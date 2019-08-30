@@ -1,15 +1,16 @@
 package handler
 
 import (
-	"context"
 	"net"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/ppacher/dhcp-ng/pkg/lease"
+	"github.com/ppacher/dhcp-ng/pkg/middleware"
 )
 
 // prepareDHCPv4Offer prepares a new DHCP IP address offer for the given DHCP request
-func prepareDHCPv4Offer(ctx context.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error) {
+func prepareDHCPv4Offer(serveCtx *middleware.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error) {
+	ctx := serveCtx.RequestContext()
 
 	cli := lease.Client{
 		HwAddr:   req.ClientHWAddr,

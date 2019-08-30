@@ -43,6 +43,11 @@ func NewContext(ctx context.Context, req *dhcpv4.DHCPv4, peer net.Addr, hw net.H
 	}, nil
 }
 
+// RequestContext returns the underlying context.Context
+func (c *Context) RequestContext() context.Context {
+	return c.ctx
+}
+
 // Peer returns the peer that sent the request. Note that for DHCPv4 requests sent by clients
 // in INIT or INIT-REBOOT state the peer might be set to the UDP broadcast address
 func (c *Context) Peer() net.Addr {

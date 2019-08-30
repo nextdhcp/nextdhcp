@@ -60,12 +60,23 @@ type DHCPv4 interface {
 // NewV4 creates a new DHCPv4 handler
 func NewV4(options Option) DHCPv4 {
 	return &v4handler{
-		subnets: options.Subnets,
+		subnets:                   options.Subnets,
+		prepareDHCPv4Offer:        prepareDHCPv4Offer,
+		prepareDHCPv4RequestReply: prepareDHCPv4RequestReply,
+		handleDHCPv4Release:       handleDHCPv4Release,
 	}
 }
 
+type serveFunc func(ctx *middleware.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error)
+
 type v4handler struct {
 	subnets []SubnetConfig
+
+	// function responsible to handle incoming DHCP request types
+	// part of the struct for unit testing purposes
+	prepareDHCPv4Offer        serveFunc
+	prepareDHCPv4RequestReply serveFunc
+	handleDHCPv4Release       serveFunc
 }
 
 func (d *v4handler) findSubnet(iface net.Interface) *SubnetConfig {
@@ -87,15 +98,15 @@ func (d *v4handler) Serve(ctx context.Context, iface net.Interface, peer *net.UD
 		return nil
 	}
 
-	resp, err := d.prepareResponse(ctx, req, s)
-	if err != nil {
-		log.Println("failed to serve request: ", err.Error())
-		return nil
-	}
-
 	serveCtx, err := middleware.NewContext(ctx, req, peer, hw, iface, nil)
 	if err != nil {
 		log.Println("failed to serve request: failed to create context: ", err.Error())
+		return nil
+	}
+
+	resp, err := d.prepareResponse(serveCtx, req, s)
+	if err != nil {
+		log.Println("failed to serve request: ", err.Error())
 		return nil
 	}
 
@@ -109,19 +120,24 @@ func (d *v4handler) Serve(ctx context.Context, iface net.Interface, peer *net.UD
 		}
 	}
 
+	if serveCtx.Resp == nil {
+		log.Println("warning: no response message returned. use ctx.ShouldSkip() instead")
+		return nil
+	}
+
 	log.Println("Response: \n", serveCtx.Resp.Summary())
 
 	return serveCtx.Resp
 }
 
-func (d *v4handler) prepareResponse(ctx context.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error) {
+func (d *v4handler) prepareResponse(ctx *middleware.Context, req *dhcpv4.DHCPv4, s *SubnetConfig) (*dhcpv4.DHCPv4, error) {
 	switch req.MessageType() {
 	case dhcpv4.MessageTypeDiscover:
-		return prepareDHCPv4Offer(ctx, req, s)
+		return d.prepareDHCPv4Offer(ctx, req, s)
 	case dhcpv4.MessageTypeRequest:
-		return prepareDHCPv4RequestReply(ctx, req, s)
+		return d.prepareDHCPv4RequestReply(ctx, req, s)
 	case dhcpv4.MessageTypeRelease:
-		return handleDHCPv4Release(ctx, req, s)
+		return d.handleDHCPv4Release(ctx, req, s)
 	case dhcpv4.MessageTypeDecline:
 		return nil, fmt.Errorf("decline messages are denied")
 	}

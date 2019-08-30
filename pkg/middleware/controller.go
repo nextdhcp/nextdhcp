@@ -6,7 +6,7 @@ import (
 
 // Handler is a middleware that handles incoming DHCPv4 requests
 type Handler interface {
-	Serve(ctx *Context, request *dhcpv4.DHCPv4)
+	ServeDHCP(ctx *Context, request *dhcpv4.DHCPv4, resp *dhcpv4.DHCPv4) error
 }
 
 // HandleFunc is a middleware that handles incoming DHCPv4 requests

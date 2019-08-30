@@ -1,13 +1,13 @@
 package main
 
+//"github.com/ppacher/dhcp-ng/internal/cmd"
 import (
-	"log"
+	"github.com/ppacher/dhcp-ng/dhcpmain"
 
-	"github.com/ppacher/dhcp-ng/internal/cmd"
+	// plugin dhcpserver
+	_ "github.com/ppacher/dhcp-ng/core"
 )
 
 func main() {
-	if err := cmd.DHCPv4Server.Execute(); err != nil {
-		log.Fatal(err)
-	}
+	dhcpmain.Run()
 }
