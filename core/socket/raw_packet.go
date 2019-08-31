@@ -50,3 +50,43 @@ func PreparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAdd
 
 	return buf.Bytes(), nil
 }
+
+func extractUDPPayloads(targetPort int, b []byte) ([]byte, net.Addr, bool) {
+	packet := gopacket.NewPacket(b, layers.LayerTypeEthernet, gopacket.Default)
+	if err := packet.ErrorLayer(); err != nil {
+		return nil, nil, false
+	}
+
+	phy, ok := packet.LinkLayer().(*layers.Ethernet)
+
+	ipLayer, ok := packet.NetworkLayer().(*layers.IPv4)
+	if !ok {
+		return nil, nil, false
+	}
+
+	udpLayer, ok := packet.TransportLayer().(*layers.UDP)
+	if !ok {
+		return nil, nil, false
+	}
+
+	if uint16(udpLayer.DstPort) != uint16(targetPort) {
+		return nil, nil, false
+	}
+
+	if len(udpLayer.Payload) == 0 {
+		return nil, nil, false
+	}
+
+	return udpLayer.Payload, &Addr{
+		RawAddr: RawAddr{
+			MAC:  phy.SrcMAC,
+			IP:   ipLayer.SrcIP.To4(),
+			Port: uint16(udpLayer.SrcPort),
+		},
+		Local: RawAddr{
+			MAC:  phy.DstMAC,
+			IP:   ipLayer.DstIP.To4(),
+			Port: uint16(udpLayer.DstPort),
+		},
+	}, true
+}

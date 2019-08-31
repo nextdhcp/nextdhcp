@@ -1,9 +1,9 @@
 package socket
 
 import (
-	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"syscall"
 	"time"
 
@@ -76,12 +76,17 @@ func ListenDHCP(ip net.IP, iface *net.Interface) (net.PacketConn, error) {
 		return nil, err
 	}
 
-	return &packetConn{
+	p := &packetConn{
 		udp:   udp,
 		raw:   r,
 		iface: iface,
 		ip:    ip,
-	}, nil
+	}
+
+	p.wg.Add(1)
+	go p.discardUDP()
+
+	return p, nil
 }
 
 // PacketConn implements net.PacketConn but utilizes a standard UDP and
@@ -91,6 +96,7 @@ type packetConn struct {
 	raw   net.PacketConn // used for directed (w/o ARP) unicasts
 	iface *net.Interface // the interface the raw PacketConn is bound to
 	ip    net.IP         // the listening IP for the udp PacketConn
+	wg    sync.WaitGroup
 }
 
 // Close will close both the UDP and the AF_PACKET socket and
@@ -102,6 +108,9 @@ func (p *packetConn) Close() error {
 	if secondErr != nil && firstErr == nil {
 		firstErr = secondErr
 	}
+
+	// wait for discardUDP to finish
+	p.wg.Wait()
 
 	return firstErr
 }
@@ -115,8 +124,32 @@ func (p *packetConn) LocalAddr() net.Addr {
 // ReadFrom implements the PacketConn interface and calls
 // ReadFrom on the underlying AF_PACKET socket
 func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	// TODO(ppacher): only return DHCP requests arriving for the UDP/RAw socket
-	return p.raw.ReadFrom(b)
+	buf := make([]byte, 4096)
+	for {
+		n, _, err := p.raw.ReadFrom(buf)
+
+		if n > 0 {
+			payload, addr, ok := extractUDPPayloads(dhcpv4.ServerPort, buf[:n])
+			if ok {
+				// TODO(ppacher): the following check does not adhere to
+				// the expected ReadFrom behavior. Fix it
+				if cap(b) < len(payload) {
+					return 0, nil, fmt.Errorf("buffer size to small")
+				}
+
+				// copy over the payload
+				for i, x := range payload {
+					b[i] = x
+				}
+
+				return len(payload), addr, err
+			}
+		}
+
+		if err != nil {
+			return 0, nil, err
+		}
+	}
 }
 
 // WriteTo sends a packet to the given addr. If addr is a *Addr the AF_PACKET
@@ -128,12 +161,12 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		srcMAC := p.iface.HardwareAddr
 		srcIP := p.ip
 
-		if r.Source.MAC != nil {
-			srcMAC = r.Source.MAC
+		if r.Local.MAC != nil {
+			srcMAC = r.Local.MAC
 		}
 
-		if r.Source.IP != nil {
-			srcIP = r.Source.IP
+		if r.Local.IP != nil {
+			srcIP = r.Local.IP
 		}
 
 		// FIXME(ppacher): Ports are currenty hardcoded in PreparePacket
@@ -153,19 +186,49 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 // SetDeadline implements the PacketConn interface
 // but is not yet implemented
 func (p *packetConn) SetDeadline(t time.Time) error {
-	return errors.New("SetDeadline: not implemented")
+	// TODO(ppacher): can we use p.udp.SetDeadline and p.raw.SetDeadline instead?
+	// If, we need to check for any deadline errors in discardUDP()
+	firstErr := p.SetReadDeadline(t)
+	if secondErr := p.SetWriteDeadline(t); secondErr != nil && firstErr == nil {
+		firstErr = secondErr
+	}
+
+	return firstErr
 }
 
 // SetReadDeadline implements the PacketConn interface
 // but is not yet implemented
 func (p *packetConn) SetReadDeadline(t time.Time) error {
-	return errors.New("SetReadDeadline: not implemented")
+	return p.raw.SetReadDeadline(t)
 }
 
 // SetWriteDeadline implements the PacketConn interface
 // but is not yet implemented
 func (p *packetConn) SetWriteDeadline(t time.Time) error {
-	return errors.New("SetWriteDeadline: not implemented")
+	firstErr := p.raw.SetWriteDeadline(t)
+	if secondErr := p.udp.SetWriteDeadline(t); secondErr != nil && firstErr == nil {
+		firstErr = secondErr
+	}
+
+	return firstErr
+}
+
+func (p *packetConn) discardUDP() {
+	buf := make([]byte, 1024)
+
+	for {
+		_, _, err := p.udp.ReadFrom(buf)
+
+		if err != nil {
+			if opErr, ok := err.(*net.OpError); ok {
+				if opErr.Timeout() || opErr.Temporary() {
+					continue
+				}
+			}
+
+			return
+		}
+	}
 }
 
 var _ net.PacketConn = &packetConn{}
