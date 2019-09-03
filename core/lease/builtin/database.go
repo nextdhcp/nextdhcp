@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/ppacher/dhcp-ng/core/lease"
-	"github.com/ppacher/dhcp-ng/core/lease/iprange"
+	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/nextdhcp/nextdhcp/core/lease/iprange"
 	"github.com/ppacher/webthings-mqtt-gateway/pkg/mutex"
 )
 

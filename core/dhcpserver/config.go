@@ -9,8 +9,8 @@ import (
 
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/core/lease"
-	"github.com/ppacher/dhcp-ng/plugin"
+	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
 // Config configures a DHCP server subnet

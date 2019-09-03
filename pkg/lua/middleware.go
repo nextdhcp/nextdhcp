@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/pkg/middleware"
+	"github.com/nextdhcp/nextdhcp/pkg/middleware"
 	lua "github.com/yuin/gopher-lua"
 	luar "layeh.com/gopher-luar"
 )

@@ -23,11 +23,11 @@ func init() {
 	caddy.RegisterCaddyfileLoader("flag", caddy.LoaderFunc(configLoader))
 	caddy.SetDefaultCaddyfileLoader("default", caddy.LoaderFunc(defaultLoader))
 
-	caddy.AppName = "dhcp-ng"
+	caddy.AppName = "NextDHCP"
 	caddy.AppVersion = "v0.1.0"
 }
 
-// Run start dhcp-ng and blocks until the server stopped
+// Run start NextDHCP and blocks until the server stopped
 func Run() {
 	caddy.TrapSignals()
 

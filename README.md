@@ -2,9 +2,9 @@
 
 A DHCP server that chains middlewares. Similar to Caddy and CoreDNS
 
-[![Build Status](https://travis-ci.com/ppacher/dhcp-ng.svg?branch=master)](https://travis-ci.com/ppacher/dhcp-ng)
-[![codecov](https://codecov.io/gh/ppacher/dhcp-ng/branch/master/graph/badge.svg)](https://codecov.io/gh/ppacher/dhcp-ng)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ppacher/dhcp-ng)](https://goreportcard.com/report/github.com/ppacher/dhcp-ng)
+[![Build Status](https://travis-ci.com/nextdhcp/nextdhcp.svg?branch=master)](https://travis-ci.com/nextdhcp/nextdhcp)
+[![codecov](https://codecov.io/gh/nextdhcp/nextdhcp/branch/master/graph/badge.svg)](https://codecov.io/gh/nextdhcp/nextdhcp)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nextdhcp/nextdhcp)](https://goreportcard.com/report/github.com/nextdhcp/nextdhcp)
 
 
 NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's based on the [Caddy server framework](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/). 
@@ -23,7 +23,7 @@ at least one virtual machine available.
 If you just want to install NextDHCP without planning to hack around in it's source code the following command should be enough to install it
 
 ```
-go get github.com/ppacher/dhcp-ng
+go get github.com/nextdhcp/nextdhcp
 ```
 
 This will install the NextDHCP binary into `$GOPATH/bin`. If you want to start hacking on the project follow the steps below:
@@ -31,15 +31,15 @@ This will install the NextDHCP binary into `$GOPATH/bin`. If you want to start h
 First clone the repository to a folder of your choice
 
 ```
-git clone https://github.com/ppacher/dhcp-ng
+git clone https://github.com/nextdhcp/nextdhcp
 ```
 
 Finally, enter the directory and build NextDHCP
 
 ```
-cd dhcp-ng
+cd nextdhcp
 go generate ./...
-go build -o dhcp-ng ./
+go build -o nextdhcp ./
 ```
 
 ### Usage
@@ -57,7 +57,7 @@ Before starting NextDHCP you need to create a configuration file. See [Dhcpfile]
 Next, we need to start the DHCP server as root:
 
 ```
-sudo ./dhcp-ng 
+sudo ./nextdhcp 
 ```
 
 ## Deployment
@@ -66,13 +66,13 @@ There has been no releases of NextDHCP yet so please follow "Getting Started" if
 
 ## Versioning
 
-We use [SemVer](http://semver.org/) for versioning. For all versions available, see the [tags on this repository](https://github.com/ppacher/dhcp-ng/tags) or checkout the [release page](https://github.com/ppacher/dhcp-ng/releases).
+We use [SemVer](http://semver.org/) for versioning. For all versions available, see the [tags on this repository](https://github.com/nextdhcp/nextdhcp/tags) or checkout the [release page](https://github.com/nextdhcp/nextdhcp/releases).
 
 ## Authors
 
 * **Patrick Pacher** - *Initial work* - [ppacher](https://github.com/ppacher)
 
-See also the list of [contributors](https://githbu.com/ppacher/dhcp-ng/contributors) who participated in this project.
+See also the list of [contributors](https://githbu.com/nextdhcp/nextdhcp/contributors) who participated in this project.
 
 ## License
 

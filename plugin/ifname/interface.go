@@ -5,7 +5,7 @@ import (
 	"net"
 
 	"github.com/caddyserver/caddy"
-	"github.com/ppacher/dhcp-ng/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 )
 
 func init() {

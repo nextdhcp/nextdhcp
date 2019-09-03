@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/ppacher/dhcp-ng/pkg/middleware"
+	"github.com/nextdhcp/nextdhcp/pkg/middleware"
 	"github.com/ppacher/glua-loop/pkg/eventloop"
 	lua "github.com/yuin/gopher-lua"
 )

@@ -4,8 +4,8 @@ import (
 	"net"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/pkg/lease"
-	"github.com/ppacher/dhcp-ng/pkg/middleware"
+	"github.com/nextdhcp/nextdhcp/pkg/lease"
+	"github.com/nextdhcp/nextdhcp/pkg/middleware"
 )
 
 // prepareDHCPv4Offer prepares a new DHCP IP address offer for the given DHCP request

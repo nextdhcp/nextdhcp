@@ -9,8 +9,8 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 
-	"github.com/ppacher/dhcp-ng/pkg/lease"
-	"github.com/ppacher/dhcp-ng/pkg/middleware"
+	"github.com/nextdhcp/nextdhcp/pkg/lease"
+	"github.com/nextdhcp/nextdhcp/pkg/middleware"
 )
 
 // SubnetConfig holds settings required to serve DHCP requests on a given
@@ -51,7 +51,7 @@ type Option struct {
 
 // DHCPv4 handles incoming DHCPv4 messages. It prepares a reply package with configured
 // options and a possible IP address. The reply message is then passed down a pre-configured
-// middleware stack where each middleware can alter the request message. See `github.com/ppacher/dhcp-ng/pkg/middleware`
+// middleware stack where each middleware can alter the request message. See `github.com/nextdhcp/nextdhcp/pkg/middleware`
 // for more information on middleware implementations
 type DHCPv4 interface {
 	Serve(context.Context, net.Interface, *net.UDPAddr, net.HardwareAddr, *dhcpv4.DHCPv4) *dhcpv4.DHCPv4

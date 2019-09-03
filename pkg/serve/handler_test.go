@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/pkg/lease/mockdb"
-	"github.com/ppacher/dhcp-ng/pkg/middleware"
+	"github.com/nextdhcp/nextdhcp/pkg/lease/mockdb"
+	"github.com/nextdhcp/nextdhcp/pkg/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

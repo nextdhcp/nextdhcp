@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/ppacher/dhcp-ng/core/lease"
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/stretchr/testify/mock"
 )
 

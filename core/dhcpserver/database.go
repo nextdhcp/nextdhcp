@@ -1,6 +1,6 @@
 package dhcpserver
 
-import "github.com/ppacher/dhcp-ng/core/lease"
+import "github.com/nextdhcp/nextdhcp/core/lease"
 
 func openDatabase(c *Config) error {
 	// TODO(ppacher): rework the database handling part

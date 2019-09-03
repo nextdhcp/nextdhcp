@@ -1,11 +1,11 @@
 package main
 
-//"github.com/ppacher/dhcp-ng/internal/cmd"
+//"github.com/nextdhcp/nextdhcp/internal/cmd"
 import (
-	"github.com/ppacher/dhcp-ng/dhcpmain"
+	"github.com/nextdhcp/nextdhcp/dhcpmain"
 
 	// plugin dhcpserver
-	_ "github.com/ppacher/dhcp-ng/core"
+	_ "github.com/nextdhcp/nextdhcp/core"
 )
 
 func main() {
