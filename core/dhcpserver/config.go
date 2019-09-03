@@ -10,7 +10,6 @@ import (
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/ppacher/dhcp-ng/core/lease"
-	"github.com/ppacher/dhcp-ng/core/lease/iprange"
 	"github.com/ppacher/dhcp-ng/plugin"
 )
 
@@ -28,9 +27,6 @@ type Config struct {
 	// is required to select the right subnet configuration when listening and serving
 	// multiple subnets
 	Interface net.Interface
-
-	// Ranges are deprecated
-	Ranges iprange.IPRanges
 
 	// Database is the lease database that is queried for new leases and reservations
 	Database lease.Database
