@@ -62,17 +62,17 @@ type Database interface {
 	DeleteRange(ranges ...*iprange.IPRange) error
 }
 
-// Key is the key used for a lease.Database stored in
+// Key is a key used to associate a Database with
 // a context.Context
-var Key = &struct{}{}
+type Key struct{}
 
 // GetDatabase returns the lease database assigned to ctx
 func GetDatabase(ctx context.Context) Database {
-	val := ctx.Value(Key)
+	val := ctx.Value(Key{})
 	if val == nil {
 		return nil
 	}
-	
+
 	db := val.(Database)
 	return db
 }
@@ -80,5 +80,5 @@ func GetDatabase(ctx context.Context) Database {
 // WithDatabase returns a new context that has the given database
 // assigned
 func WithDatabase(ctx context.Context, db Database) context.Context {
-	return context.WithValue(ctx, Key, db)
+	return context.WithValue(ctx, Key{}, db)
 }

@@ -1,17 +1,17 @@
 package dhcpserver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"net"
-	"context"
 	"sync"
 
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/core/socket"
 	"github.com/ppacher/dhcp-ng/core/lease"
+	"github.com/ppacher/dhcp-ng/core/socket"
 )
 
 // Server represents an instance of a server which
@@ -56,7 +56,7 @@ func (s *Server) ServePacket(c net.PacketConn) error {
 		if byteLen > 0 {
 			log.Println("serving request from ", addr)
 			s.dhcpWg.Add(1)
-			go s.serveAndLogDHCPv4(payload[:byteLen], addr)
+			go s.serveAndLogDHCPv4(c, payload[:byteLen], addr)
 		}
 
 		if err != nil {
@@ -93,7 +93,7 @@ func (s *Server) OnStartupComplete() {
 	}
 }
 
-func (s *Server) serveAndLogDHCPv4(payload []byte, addr net.Addr) {
+func (s *Server) serveAndLogDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) {
 	defer s.dhcpWg.Done()
 	// In any case we must not panic while serving requests
 	defer func() {
@@ -103,7 +103,7 @@ func (s *Server) serveAndLogDHCPv4(payload []byte, addr net.Addr) {
 		}
 	}()
 
-	err := s.serveDHCPv4(payload, addr)
+	err := s.serveDHCPv4(c, payload, addr)
 	if err != nil {
 		log.Printf("failed to serve request from %s: %s", addr.String(), err.Error())
 	}
@@ -113,7 +113,7 @@ func (s *Server) findSubnetConfig(gwIP net.IP) *Config {
 	return s.cfg
 }
 
-func (s *Server) serveDHCPv4(payload []byte, addr net.Addr) error {
+func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) error {
 	msg, err := dhcpv4.FromBytes(payload)
 	if err != nil {
 		return err
@@ -123,16 +123,28 @@ func (s *Server) serveDHCPv4(payload []byte, addr net.Addr) error {
 	if cfg == nil {
 		return errors.New("subnet not served")
 	}
-	
+
 	resp, err := dhcpv4.NewReplyFromRequest(msg)
 	if err != nil {
 		return err
 	}
-	
+
 	ctx := context.Background()
 	ctx = lease.WithDatabase(ctx, cfg.Database)
+	ctx = WithPeer(ctx, addr)
 
-	return cfg.chain.ServeDHCP(ctx, msg, resp)
+	err = cfg.chain.ServeDHCP(ctx, msg, resp)
+	if err != nil && err != ErrNoResponse {
+		return err
+	}
+
+	if err == ErrNoResponse {
+		return nil
+	}
+
+	response := resp.ToBytes()
+	_, err = c.WriteTo(response, addr)
+	return err
 }
 
 // Compile-Time check

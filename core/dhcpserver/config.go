@@ -1,16 +1,17 @@
 package dhcpserver
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net"
 	"time"
-	"context"
 
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/plugin"
 	"github.com/ppacher/dhcp-ng/core/lease"
 	"github.com/ppacher/dhcp-ng/core/lease/iprange"
+	"github.com/ppacher/dhcp-ng/plugin"
 )
 
 // Config configures a DHCP server subnet
@@ -28,6 +29,7 @@ type Config struct {
 	// multiple subnets
 	Interface net.Interface
 
+	// Ranges are deprecated
 	Ranges iprange.IPRanges
 
 	// Database is the lease database that is queried for new leases and reservations
@@ -38,10 +40,10 @@ type Config struct {
 
 	// LeaseTime is the default lease time to use for new IP address leases
 	LeaseTime time.Duration
-	
+
 	// plugins is a list of middleware setup functions
 	plugins []plugin.Plugin
-	
+
 	// chain is the beginning of the middleware chain for this subnet
 	chain plugin.Handler
 }
@@ -67,17 +69,20 @@ func GetConfig(c *caddy.Controller) *Config {
 
 func buildMiddlewareChain(cfg *Config) error {
 	var endOfChainHandler plugin.HandlerFunc = func(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
-		return nil
+		peer := GetPeer(ctx)
+		log.Printf("%s from %s not handled. dropping", req.MessageType().String(), peer)
+
+		return ErrNoResponse
 	}
-	
+
 	fmt.Println("building chain for ", cfg.plugins)
-	
-	var chain plugin.Handler = endOfChainHandler	
-	for i := len(cfg.plugins) -1; i >= 0; i-- {
+
+	var chain plugin.Handler = endOfChainHandler
+	for i := len(cfg.plugins) - 1; i >= 0; i-- {
 		chain = cfg.plugins[i](chain)
 	}
-	
+
 	cfg.chain = chain
-	
+
 	return nil
 }
