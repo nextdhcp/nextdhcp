@@ -3,6 +3,7 @@ package ranges
 import (
 	"context"
 	"net"
+	"time"
 
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -24,12 +25,75 @@ type rangePlugin struct {
 	ranges iprange.IPRanges
 }
 
+func (p *rangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr, db lease.Database) net.IP {
+	cli := lease.Client{
+		HwAddr: mac,
+		ID:     mac.String(),
+	}
+
+	for _, r := range p.ranges {
+		for idx := 0; idx < r.Len(); idx++ {
+			ip := r.ByIdx(idx)
+
+			if err := db.Reserve(ctx, ip, cli); err != nil {
+				// failed to reserve the IP address
+				if err == context.DeadlineExceeded || err == context.Canceled {
+					return nil
+				}
+
+				continue
+			}
+
+			// we successfully reserved the IP address for the client
+			return ip
+		}
+	}
+
+	// we failed to find a leasable address
+	return nil
+}
+
 func (p *rangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	db := lease.GetDatabase(ctx)
+	cli := lease.Client{HwAddr: req.ClientHWAddr}
 
-	// we only serve discover and request message types
-	if dhcpserver.Discover(req) || dhcpserver.Request(req) {
-	}
+	if dhcpserver.Discover(req) {
+		ip := p.findUnboundAddr(ctx, req.ClientHWAddr, db)
+		if ip != nil {
+			res.YourIPAddr = ip
+			return nil
+		}
+
+		// we failed to find an IP address for that client
+		// so fallthrough and call the next middleware
+	} else
+
+	// for DHCPREQUEST we try to actually lease the IP address
+	// and send a DHCPACK if we succeeded. In any error case
+	// we will NOT send a NAK as a middleware below us
+	// may succeed in leasing the address
+	// TODO(ppacher): we could check if the RequestedIPAddress() is inside
+	// the IP ranges and then decide to ACK or NAK
+	if dhcpserver.Request(req) && req.RequestedIPAddress() != nil {
+		// use the leaseTime already set to the response packet
+		// else we fallback to time.Hour
+		// TODO(ppacher): we should make the default lease time configurable
+		// for the ranges plguin
+		leaseTime := res.IPAddressLeaseTime(time.Hour)
+
+		leaseTime, err := db.Lease(ctx, req.RequestedIPAddress(), cli, leaseTime, false)
+		if err == nil {
+			if leaseTime == time.Hour {
+				// if we use the default, make sure to set it
+				res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
+			}
+
+			// make sure we ACK the DHCPREQUEST
+			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
+
+			return nil
+		}
+	} else
 
 	// If it's a DHCPRELEASE message and part of our range we'll release it
 	if dhcpserver.Release(req) && p.ranges.Contains(req.ClientIPAddr) {
@@ -75,7 +139,7 @@ func setupRange(c *caddy.Controller) error {
 			End:   endIP,
 		}
 
-		plg.ranges = append(plg.ranges, r)
+		plg.ranges = iprange.Merge(append(plg.ranges, r))
 	}
 
 	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
