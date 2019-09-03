@@ -129,6 +129,18 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 		return err
 	}
 
+	switch msg.MessageType() {
+	case dhcpv4.MessageTypeDiscover:
+		resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer))
+	case dhcpv4.MessageTypeRequest:
+		// Response message type for Request (either ACK or NAK) should be set
+		// by plugins
+		fallthrough
+
+	default:
+		resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNone))
+	}
+
 	ctx := context.Background()
 	ctx = lease.WithDatabase(ctx, cfg.Database)
 	ctx = WithPeer(ctx, addr)
