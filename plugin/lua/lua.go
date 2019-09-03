@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/nextdhcp/nextdhcp/pkg/middleware"
 	"github.com/ppacher/glua-loop/pkg/eventloop"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -91,13 +90,4 @@ func (r *Runner) Plugins() []PluginConfig {
 // Subnets returns all registered subnets
 func (r *Runner) Subnets() []Subnet {
 	return r.subnets.Subnets()
-}
-
-// FunctionHandler returns a middleware.Handler that executes a lua function
-// on the runner
-func (r *Runner) FunctionHandler(fn *lua.LFunction) middleware.Handler {
-	return &luaMiddlware{
-		runner: r,
-		fn:     fn,
-	}
 }
