@@ -13,9 +13,7 @@ import (
 
 // database implements the Database interface
 type database struct {
-	network                   *net.IPNet                       // IP network served by this database
 	l                         *mutex.Mutex                     // context.Context aware mutex to protect all fields below
-	ranges                    iprange.IPRanges                 // ranges usable for address leases
 	reservedAddresses         map[uint32]lease.ReservedAddress // maps IP address to it's reserved address struct
 	reservedAddressesByClient map[string]uint32                // maps a net.HardwareAddr.String() to the IP address reserved
 	leasedAddresses           map[uint32]*lease.Lease          // maps IP address to lease
@@ -23,22 +21,9 @@ type database struct {
 }
 
 // New returns a new database instance
-func New(nw *net.IPNet, ranges []*iprange.IPRange) lease.Database {
-	// create a copy of the ranges slice
-	rangesCpy := make([]*iprange.IPRange, len(ranges))
-	for i, r := range ranges {
-		rangesCpy[i] = r.Clone()
-	}
-
-	rangesCpy = iprange.Merge(rangesCpy)
-
+func New() lease.Database {
 	db := &database{
-		l: mutex.New(),
-		network: &net.IPNet{
-			IP:   append(net.IP{}, nw.IP...),
-			Mask: append(net.IPMask{}, nw.Mask...),
-		},
-		ranges:                    rangesCpy,
+		l:                         mutex.New(),
 		reservedAddresses:         make(map[uint32]lease.ReservedAddress),
 		reservedAddressesByClient: make(map[string]uint32),
 		leasedAddresses:           make(map[uint32]*lease.Lease),
@@ -76,51 +61,11 @@ func (db *database) ReservedAddresses(ctx context.Context) ([]lease.ReservedAddr
 	return reservations, nil
 }
 
-func (db *database) FindAddress(ctx context.Context, cli *lease.Client) (net.IP, error) {
-	if !db.l.TryLock(ctx) {
-		return nil, ctx.Err()
-	}
-	defer db.l.Unlock()
-
-	l, ok := db.leaseByCli(*cli)
-	if ok {
-		return l.Address, nil
-	}
-
-	r, ok := db.reservedAddrByCli(*cli)
-	if ok {
-		return r.IP, nil
-	}
-
-	for _, ipRange := range db.ranges {
-		for i := 0; i < ipRange.Len(); i++ {
-			ip := ipRange.ByIdx(i)
-			key, _ := iprange.IP2Int(ip)
-
-			if _, ok := db.reservedAddresses[key]; ok {
-				continue
-			}
-
-			if _, ok := db.leasedAddresses[key]; ok {
-				continue
-			}
-
-			return ip, nil
-		}
-	}
-
-	return nil, lease.ErrNoIPAvailable
-}
-
 func (db *database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) error {
 	if !db.l.TryLock(ctx) {
 		return ctx.Err()
 	}
 	defer db.l.Unlock()
-
-	if !db.isLeasable(ip) {
-		return errors.New("IP address not allowed")
-	}
 
 	key, ok := iprange.IP2Int(ip)
 	if !ok {
@@ -168,10 +113,6 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 		return 0, ctx.Err()
 	}
 	defer db.l.Unlock()
-
-	if !db.isLeasable(ip) {
-		return 0, errors.New("IP address not allowed")
-	}
 
 	key, ok := iprange.IP2Int(ip)
 	if !ok {
@@ -271,26 +212,6 @@ func (db *database) ReleaseClient(ctx context.Context, cli *lease.Client) error 
 	return lease.ErrNoIPAvailable
 }
 
-func (db *database) AddRange(ranges ...*iprange.IPRange) error {
-	db.l.Lock()
-	defer db.l.Unlock()
-
-	db.ranges = iprange.Merge(append(db.ranges, ranges...))
-
-	return nil
-}
-
-func (db *database) DeleteRange(ranges ...*iprange.IPRange) error {
-	db.l.Lock()
-	defer db.l.Unlock()
-
-	for _, r := range ranges {
-		db.ranges = iprange.DeleteFrom(r, db.ranges)
-	}
-
-	return nil
-}
-
 func (db *database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease.Client) error {
 	db.l.Lock()
 	defer db.l.Unlock()
@@ -315,32 +236,4 @@ func (db *database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease
 	delete(db.reservedAddressesByClient, reservation.HwAddr.String())
 
 	return nil
-}
-
-func (db *database) reservedAddrByCli(cli lease.Client) (lease.ReservedAddress, bool) {
-	key := cli.HwAddr.String()
-	ip, ok := db.reservedAddressesByClient[key]
-	if !ok {
-		return lease.ReservedAddress{}, false
-	}
-
-	r, ok := db.reservedAddresses[ip]
-
-	return r, ok
-}
-
-func (db *database) leaseByCli(cli lease.Client) (*lease.Lease, bool) {
-	key := cli.HwAddr.String()
-	ip, ok := db.leasedAddressesByClient[key]
-	if !ok {
-		return nil, false
-	}
-
-	l, ok := db.leasedAddresses[ip]
-
-	return l, ok
-}
-
-func (db *database) isLeasable(ip net.IP) bool {
-	return iprange.IPRanges(db.ranges).Contains(ip)
 }

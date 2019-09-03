@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ppacher/dhcp-ng/core/lease"
-	"github.com/ppacher/dhcp-ng/core/lease/iprange"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -27,12 +26,6 @@ func (m *MockDatabase) ReservedAddresses(context.Context) ([]lease.ReservedAddre
 	args := m.Called()
 
 	return args.Get(0).([]lease.ReservedAddress), args.Error(1)
-}
-
-// FindAddress implements the lease.Database interface
-func (m *MockDatabase) FindAddress(_ context.Context, cli *lease.Client) (net.IP, error) {
-	args := m.Called(cli)
-	return args.Get(0).(net.IP), args.Error(1)
 }
 
 // Lease implements the lease.Database interface
@@ -59,16 +52,6 @@ func (m *MockDatabase) DeleteReservation(_ context.Context, ip net.IP, cli *leas
 // ReleaseClient implements the lease.Database interface
 func (m *MockDatabase) ReleaseClient(_ context.Context, cli *lease.Client) error {
 	return m.Called(cli).Error(0)
-}
-
-// AddRange implements the lease.Database interface
-func (m *MockDatabase) AddRange(ranges ...*iprange.IPRange) error {
-	return m.Called(ranges).Error(0)
-}
-
-// DeleteRange implements the lease.Database interface
-func (m *MockDatabase) DeleteRange(ranges ...*iprange.IPRange) error {
-	return m.Called(ranges).Error(0)
 }
 
 // compile time check
