@@ -25,7 +25,10 @@ type leaseTimePlugin struct {
 
 func (p *leaseTimePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	if dhcpserver.Discover(req) || dhcpserver.Request(req) {
-		res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(p.leaseTime))
+		code := dhcpv4.OptionIPAddressLeaseTime.Code()
+		if _, ok := res.Options[code]; !ok {
+			res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(p.leaseTime))
+		}
 	}
 
 	return p.next.ServeDHCP(ctx, req, res)
