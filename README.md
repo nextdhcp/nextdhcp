@@ -72,7 +72,7 @@ We use [SemVer](http://semver.org/) for versioning. For all versions available, 
 
 * **Patrick Pacher** - *Initial work* - [ppacher](https://github.com/ppacher)
 
-See also the list of [contributors](https://githbu.com/nextdhcp/nextdhcp/contributors) who participated in this project.
+See also the list of [contributors](https://github.com/nextdhcp/nextdhcp/graphs/contributors) who participated in this project.
 
 ## License
 
