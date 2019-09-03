@@ -25,10 +25,27 @@ type rangePlugin struct {
 	ranges iprange.IPRanges
 }
 
-func (p *rangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr, db lease.Database) net.IP {
+func (p *rangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr, requested net.IP, db lease.Database) net.IP {
 	cli := lease.Client{
 		HwAddr: mac,
 		ID:     mac.String(),
+	}
+
+	// if there's a requested IP address will try that first if it's part of our range
+	// if there's a requested address that's not in our ranges will do nothing as another
+	// middleware might handle the request
+	if requested != nil {
+		if !p.ranges.Contains(requested) {
+			// we cannot serve the requested IP address
+			// may another middleware can
+			return nil
+		}
+
+		if err := db.Reserve(ctx, requested, cli); err == nil {
+			return requested
+		}
+
+		// TODO(ppacher): should we check for context errors here?
 	}
 
 	for _, r := range p.ranges {
@@ -58,7 +75,7 @@ func (p *rangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 	cli := lease.Client{HwAddr: req.ClientHWAddr}
 
 	if dhcpserver.Discover(req) {
-		ip := p.findUnboundAddr(ctx, req.ClientHWAddr, db)
+		ip := p.findUnboundAddr(ctx, req.ClientHWAddr, req.RequestedIPAddress(), db)
 		if ip != nil {
 			res.YourIPAddr = ip
 			return nil
