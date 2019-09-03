@@ -32,15 +32,13 @@ func (p *rangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 	}
 
 	// If it's a DHCPRELEASE message and part of our range we'll release it
-	if dhcpserver.Release(req) {
-		if p.ranges.Contains(req.ClientIPAddr) {
-			if err := db.Release(ctx, req.ClientIPAddr); err != nil {
-				return err
-			}
-
-			// No response should be sent for DHCPRELEASE messages
-			return dhcpserver.ErrNoResponse
+	if dhcpserver.Release(req) && p.ranges.Contains(req.ClientIPAddr) {
+		if err := db.Release(ctx, req.ClientIPAddr); err != nil {
+			return err
 		}
+
+		// No response should be sent for DHCPRELEASE messages
+		return dhcpserver.ErrNoResponse
 	}
 
 	return p.next.ServeDHCP(ctx, req, res)
