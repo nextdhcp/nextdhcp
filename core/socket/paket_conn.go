@@ -76,7 +76,7 @@ func ListenDHCP(ip net.IP, iface *net.Interface) (net.PacketConn, error) {
 		return nil, err
 	}
 
-	p := &packetConn{
+	p := &DHCPConn{
 		udp:   udp,
 		raw:   r,
 		iface: iface,
@@ -89,9 +89,9 @@ func ListenDHCP(ip net.IP, iface *net.Interface) (net.PacketConn, error) {
 	return p, nil
 }
 
-// PacketConn implements net.PacketConn but utilizes a standard UDP and
+// DHCPConn implements net.PacketConn but utilizes a standard UDP and
 // and AF_PACKET socket
-type packetConn struct {
+type DHCPConn struct {
 	udp   net.PacketConn // used for routable unicasts
 	raw   net.PacketConn // used for directed (w/o ARP) unicasts
 	iface *net.Interface // the interface the raw PacketConn is bound to
@@ -101,7 +101,7 @@ type packetConn struct {
 
 // Close will close both the UDP and the AF_PACKET socket and
 // will return the first error encountered
-func (p *packetConn) Close() error {
+func (p *DHCPConn) Close() error {
 	firstErr := p.udp.Close()
 
 	secondErr := p.raw.Close()
@@ -117,13 +117,13 @@ func (p *packetConn) Close() error {
 
 // LocalAddr implements the PacketConn interface and returns
 // the local address of the UDP socket
-func (p *packetConn) LocalAddr() net.Addr {
+func (p *DHCPConn) LocalAddr() net.Addr {
 	return p.udp.LocalAddr()
 }
 
 // ReadFrom implements the PacketConn interface and calls
 // ReadFrom on the underlying AF_PACKET socket
-func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
+func (p *DHCPConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	buf := make([]byte, 4096)
 	for {
 		n, _, err := p.raw.ReadFrom(buf)
@@ -156,7 +156,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 // socket will be choosen. Otherwise, for e.g. net.UDPAddr, the underlying UDP
 // packet conn will be used.
 // It implements the PacketConn interface
-func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	if r, ok := addr.(*Addr); ok {
 		srcMAC := p.iface.HardwareAddr
 		srcIP := p.ip
@@ -185,7 +185,7 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 // SetDeadline implements the PacketConn interface
 // but is not yet implemented
-func (p *packetConn) SetDeadline(t time.Time) error {
+func (p *DHCPConn) SetDeadline(t time.Time) error {
 	// TODO(ppacher): can we use p.udp.SetDeadline and p.raw.SetDeadline instead?
 	// If, we need to check for any deadline errors in discardUDP()
 	firstErr := p.SetReadDeadline(t)
@@ -198,13 +198,13 @@ func (p *packetConn) SetDeadline(t time.Time) error {
 
 // SetReadDeadline implements the PacketConn interface
 // but is not yet implemented
-func (p *packetConn) SetReadDeadline(t time.Time) error {
+func (p *DHCPConn) SetReadDeadline(t time.Time) error {
 	return p.raw.SetReadDeadline(t)
 }
 
 // SetWriteDeadline implements the PacketConn interface
 // but is not yet implemented
-func (p *packetConn) SetWriteDeadline(t time.Time) error {
+func (p *DHCPConn) SetWriteDeadline(t time.Time) error {
 	firstErr := p.raw.SetWriteDeadline(t)
 	if secondErr := p.udp.SetWriteDeadline(t); secondErr != nil && firstErr == nil {
 		firstErr = secondErr
@@ -213,7 +213,7 @@ func (p *packetConn) SetWriteDeadline(t time.Time) error {
 	return firstErr
 }
 
-func (p *packetConn) discardUDP() {
+func (p *DHCPConn) discardUDP() {
 	buf := make([]byte, 1024)
 
 	for {
@@ -231,4 +231,4 @@ func (p *packetConn) discardUDP() {
 	}
 }
 
-var _ net.PacketConn = &packetConn{}
+var _ net.PacketConn = &DHCPConn{}

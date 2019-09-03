@@ -1,4 +1,4 @@
-package handler
+package serve
 
 import (
 	"github.com/insomniacslk/dhcp/dhcpv4"

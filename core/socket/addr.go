@@ -5,6 +5,8 @@ import (
 	"net"
 )
 
+// RawAddr implements net.Addr and holds the Ethernet and IP address
+// as well as the TCP/UDP port
 type RawAddr struct {
 	MAC  net.HardwareAddr
 	IP   net.IP

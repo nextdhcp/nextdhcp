@@ -6,8 +6,8 @@ import (
 	"net"
 	"strings"
 
-	"github.com/ppacher/dhcp-ng/pkg/lease"
-	"github.com/ppacher/dhcp-ng/pkg/lease/iprange"
+	"github.com/ppacher/dhcp-ng/core/lease"
+	"github.com/ppacher/dhcp-ng/core/lease/iprange"
 )
 
 func factory(opts map[string]interface{}) (lease.Database, error) {

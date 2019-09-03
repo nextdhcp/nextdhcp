@@ -2,9 +2,14 @@ package ranges
 
 import (
 	"net"
+	"context"
+	"log"
+	
 	"github.com/caddyserver/caddy"
-	"github.com/ppacher/dhcp-ng/pkg/lease/iprange"
+	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/ppacher/dhcp-ng/core/lease/iprange"
 	"github.com/ppacher/dhcp-ng/core/dhcpserver"
+	"github.com/ppacher/dhcp-ng/plugin"
 )
 
 func init() {
@@ -40,6 +45,14 @@ func setupRange(c *caddy.Controller) error {
 		
 		config.Ranges = append(config.Ranges, r)
 	}
+
+	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+		return plugin.HandlerFunc(func(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+			log.Println("range plugin running")
+
+			return next.ServeDHCP(ctx, req, res)
+		})
+	})
 
 	return nil
 }

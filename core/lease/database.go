@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/ppacher/dhcp-ng/pkg/lease/iprange"
+	"github.com/ppacher/dhcp-ng/core/lease/iprange"
 )
 
 var (
@@ -60,4 +60,25 @@ type Database interface {
 	// DeleteRange deletes ranges from the list of leasable IP addresses. Already leased addreses
 	// will still be valid until they expire
 	DeleteRange(ranges ...*iprange.IPRange) error
+}
+
+// Key is the key used for a lease.Database stored in
+// a context.Context
+var Key = &struct{}{}
+
+// GetDatabase returns the lease database assigned to ctx
+func GetDatabase(ctx context.Context) Database {
+	val := ctx.Value(Key)
+	if val == nil {
+		return nil
+	}
+	
+	db := val.(Database)
+	return db
+}
+
+// WithDatabase returns a new context that has the given database
+// assigned
+func WithDatabase(ctx context.Context, db Database) context.Context {
+	return context.WithValue(ctx, Key, db)
 }

@@ -2,7 +2,6 @@ package dhcpserver
 
 import (
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/caddyserver/caddy"
@@ -36,20 +35,6 @@ type dhcpContext struct {
 	keyToConfig map[string]*Config
 }
 
-func keyForConfig(serverBlockIndex, serverBlockKeyIndex int) string {
-	return fmt.Sprintf("%d:%d", serverBlockIndex, serverBlockKeyIndex)
-}
-
-// GetConfig gets the Config that corresponds to c
-// if none exist nil is returned
-func GetConfig(c *caddy.Controller) *Config {
-	ctx := c.Context().(*dhcpContext)
-	key := keyForConfig(c.ServerBlockIndex, c.ServerBlockKeyIndex)
-
-	cfg := ctx.keyToConfig[key]
-	return cfg
-}
-
 func (c *dhcpContext) addConfig(key string, cfg *Config) {
 	c.configs = append(c.configs, cfg)
 	c.keyToConfig[key] = cfg
@@ -58,7 +43,6 @@ func (c *dhcpContext) addConfig(key string, cfg *Config) {
 func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []caddyfile.ServerBlock) ([]caddyfile.ServerBlock, error) {
 	for si, s := range serverBlocks {
 		for ki, k := range s.Keys {
-			log.Printf("si=%d ki=%d k=%s", si, ki, k)
 			ip, ipNet, err := net.ParseCIDR(k)
 			if err != nil {
 				return nil, fmt.Errorf("Invalid IP network address '%s' in server block %d", k, si)
@@ -82,48 +66,25 @@ func (c *dhcpContext) MakeServers() ([]caddy.Server, error) {
 		if !findInterface(c) {
 			return nil, fmt.Errorf("failed to find interface for subnet %s", c.Network.String())
 		}
-	}
-	
-	return nil, fmt.Errorf("not yet supported")
-}
 
-func findInterface(cfg *Config) bool {
-	if cfg.Interface.Name != "" && len(cfg.Interface.HardwareAddr) > 0 {
-		return true
-	}
-	
-	iface, err := findInterfaceByIP(cfg.Network.IP)
-	if err != nil {
-		return false
-	}
-	
-	cfg.Interface = *iface
-	return true
-}
+		if err := openDatabase(c); err != nil {
+			return nil, fmt.Errorf("failed to open database for subnet %s: %s", c.Network.String(), err.Error())
+		}
 
-func findInterfaceByIP(ip net.IP) (*net.Interface, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
+		if err := buildMiddlewareChain(c); err != nil {
+			return nil, fmt.Errorf("failed to build middleware chain for subnet %s: %s", c.Network.String(), err.Error())
+		}
 	}
 
-	for _, iface := range ifaces {
-		addrs, err := iface.Addrs()
+	var servers []caddy.Server
+	for _, cfg := range c.configs {
+		s, err := NewServer(cfg)
 		if err != nil {
-			return nil, err
+			return servers, err
 		}
 
-		for _, a := range addrs {
-			ipNet, ok := a.(*net.IPNet)
-			if !ok {
-				continue
-			}
-
-			if ipNet.IP.Equal(ip) {
-				return &iface, nil
-			}
-		}
+		servers = append(servers, s)
 	}
 
-	return nil, fmt.Errorf("failed to find interface for %s", ip.String())
+	return servers, nil
 }

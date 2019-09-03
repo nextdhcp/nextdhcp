@@ -2,7 +2,6 @@ package dhcpmain
 
 import (
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -28,10 +27,9 @@ func init() {
 	caddy.AppVersion = "v0.1.0"
 }
 
+// Run start dhcp-ng and blocks until the server stopped
 func Run() {
 	caddy.TrapSignals()
-
-	fmt.Println(caddy.DescribePlugins())
 
 	dhcpfile, err := caddy.LoadCaddyfile(serverType)
 	if err != nil {

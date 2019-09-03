@@ -1,11 +1,16 @@
 package dhcpserver
 
 import (
+	"fmt"
 	"net"
 	"time"
+	"context"
 
+	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ppacher/dhcp-ng/pkg/lease/iprange"
+	"github.com/ppacher/dhcp-ng/plugin"
+	"github.com/ppacher/dhcp-ng/core/lease"
+	"github.com/ppacher/dhcp-ng/core/lease/iprange"
 )
 
 // Config configures a DHCP server subnet
@@ -22,19 +27,57 @@ type Config struct {
 	// is required to select the right subnet configuration when listening and serving
 	// multiple subnets
 	Interface net.Interface
-	
+
 	Ranges iprange.IPRanges
 
 	// Database is the lease database that is queried for new leases and reservations
-	//Database lease.Database
+	Database lease.Database
 
 	// Options holds a map of DHCP options that should be set
 	Options map[dhcpv4.OptionCode]dhcpv4.OptionValue
 
 	// LeaseTime is the default lease time to use for new IP address leases
 	LeaseTime time.Duration
+	
+	// plugins is a list of middleware setup functions
+	plugins []plugin.Plugin
+	
+	// chain is the beginning of the middleware chain for this subnet
+	chain plugin.Handler
+}
 
-	// Middlewares is the middleware stack to execute. See documentation of the DHCPv4
-	// interface for more information
-	//Middlewares []middleware.Handler
+// AddPlugin adds a new plugin to the middleware chain
+func (cfg *Config) AddPlugin(p plugin.Plugin) {
+	cfg.plugins = append(cfg.plugins, p)
+}
+
+func keyForConfig(serverBlockIndex, serverBlockKeyIndex int) string {
+	return fmt.Sprintf("%d:%d", serverBlockIndex, serverBlockKeyIndex)
+}
+
+// GetConfig gets the Config that corresponds to c
+// if none exist nil is returned
+func GetConfig(c *caddy.Controller) *Config {
+	ctx := c.Context().(*dhcpContext)
+	key := keyForConfig(c.ServerBlockIndex, c.ServerBlockKeyIndex)
+
+	cfg := ctx.keyToConfig[key]
+	return cfg
+}
+
+func buildMiddlewareChain(cfg *Config) error {
+	var endOfChainHandler plugin.HandlerFunc = func(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+		return nil
+	}
+	
+	fmt.Println("building chain for ", cfg.plugins)
+	
+	var chain plugin.Handler = endOfChainHandler	
+	for i := len(cfg.plugins) -1; i >= 0; i-- {
+		chain = cfg.plugins[i](chain)
+	}
+	
+	cfg.chain = chain
+	
+	return nil
 }
