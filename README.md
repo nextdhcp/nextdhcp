@@ -51,6 +51,7 @@ Before starting NextDHCP you need to create a configuration file. See [Dhcpfile]
     lease 1h
     range 192.168.0.100 192.168.0.200
     option router 192.168.0.1
+    next-server 10.1.1.1
 }
 ```
 
@@ -59,6 +60,8 @@ Next, we need to start the DHCP server as root:
 ```
 sudo ./nextdhcp 
 ```
+
+For a list of supported plugins please checkout the content of the [*plugin*](./plugin) directory.
 
 ## Deployment
 
