@@ -3,7 +3,7 @@
 A DHCP server that chains middlewares. Similar to Caddy and CoreDNS
 
 [![Build Status](https://travis-ci.com/nextdhcp/nextdhcp.svg?branch=master)](https://travis-ci.com/nextdhcp/nextdhcp)
-[![codecov](https://codecov.io/gh/nextdhcp/nextdhcp/branch/master/graph/badge.svg)](https://codecov.io/gh/nextdhcp/nextdhcp)
+[![codecov](https://codecov.io/gh/ppacher/dhcp-ng/branch/master/graph/badge.svg)](https://codecov.io/gh/nextdhcp/nextdhcp)
 [![Go Report Card](https://goreportcard.com/badge/github.com/nextdhcp/nextdhcp)](https://goreportcard.com/report/github.com/nextdhcp/nextdhcp)
 
 
