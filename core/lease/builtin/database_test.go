@@ -141,14 +141,8 @@ func Test_Database_ReservedAddresses(t *testing.T) {
 }
 
 func Test_Database_Reserve(t *testing.T) {
-
-	// IP address not leasable
-	db := getTestDatabase(t)
-	assert.Error(t, db.Reserve(ctx, net.IP{10, 9, 0, 100}, *defaultClient))
-	assert.Error(t, db.Reserve(ctx, net.IP{192, 168, 0, 255}, *defaultClient))
-
 	// invalid IP
-	db = getTestDatabase(t)
+	db := getTestDatabase(t)
 	assert.Error(t, db.Reserve(ctx, net.IP{100}, *defaultClient))
 
 	// address already leased to a different client
