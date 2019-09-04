@@ -6,6 +6,7 @@ import (
 
 	"github.com/caddyserver/caddy"
 	"github.com/caddyserver/caddy/caddyfile"
+	"github.com/sirupsen/logrus"
 )
 
 const serverType = "dhcpv4"
@@ -51,6 +52,7 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 			cfg := &Config{
 				IP:      ip,
 				Network: *ipNet,
+				logger:  logrus.New(),
 			}
 
 			configKey := keyForConfig(si, ki)

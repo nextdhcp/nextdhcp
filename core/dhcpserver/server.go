@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
+	"runtime/debug"
 	"sync"
 
 	"github.com/caddyserver/caddy"
@@ -54,7 +54,7 @@ func (s *Server) ServePacket(c net.PacketConn) error {
 		byteLen, addr, err := c.ReadFrom(payload)
 
 		if byteLen > 0 {
-			log.Println("serving request from ", addr)
+			s.cfg.logger.Println("serving request from ", addr)
 			s.dhcpWg.Add(1)
 			go s.serveAndLogDHCPv4(c, payload[:byteLen], addr)
 		}
@@ -98,14 +98,15 @@ func (s *Server) serveAndLogDHCPv4(c net.PacketConn, payload []byte, addr net.Ad
 	// In any case we must not panic while serving requests
 	defer func() {
 		if x := recover(); x != nil {
-			log.Printf("Caught panic while serving a DHCP request from %s", addr.String())
-			log.Println(x)
+			s.cfg.logger.Printf("Caught panic while serving a DHCP request from %s", addr.String())
+			s.cfg.logger.Printf("\t%v", x)
+			s.cfg.logger.Println(string(debug.Stack()))
 		}
 	}()
 
 	err := s.serveDHCPv4(c, payload, addr)
 	if err != nil {
-		log.Printf("failed to serve request from %s: %s", addr.String(), err.Error())
+		s.cfg.logger.Printf("failed to serve request from %s: %s", addr.String(), err.Error())
 	}
 }
 
