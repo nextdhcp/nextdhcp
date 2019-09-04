@@ -4,7 +4,8 @@ package main
 import (
 	"github.com/nextdhcp/nextdhcp/dhcpmain"
 
-	// plugin dhcpserver
+	// plugin dhcpserver as well all all supported plugins
+	// and the default database
 	_ "github.com/nextdhcp/nextdhcp/core"
 )
 
