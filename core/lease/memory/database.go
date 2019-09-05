@@ -1,4 +1,4 @@
-package builtin
+package memory
 
 import (
 	"context"
@@ -178,33 +178,6 @@ func (db *database) Release(ctx context.Context, ip net.IP) error {
 	if ok {
 		delete(db.reservedAddresses, key)
 		delete(db.reservedAddressesByClient, reservation.HwAddr.String())
-
-		return nil
-	}
-
-	return lease.ErrNoIPAvailable
-}
-
-func (db *database) ReleaseClient(ctx context.Context, cli *lease.Client) error {
-	if !db.l.TryLock(ctx) {
-		return ctx.Err()
-	}
-	defer db.l.Unlock()
-
-	key := cli.HwAddr.String()
-
-	idx, ok := db.leasedAddressesByClient[key]
-	if ok {
-		delete(db.leasedAddresses, idx)
-		delete(db.leasedAddressesByClient, key)
-
-		return nil
-	}
-
-	idx, ok = db.reservedAddressesByClient[key]
-	if ok {
-		delete(db.reservedAddresses, idx)
-		delete(db.reservedAddressesByClient, key)
 
 		return nil
 	}

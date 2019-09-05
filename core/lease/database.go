@@ -44,9 +44,6 @@ type Database interface {
 
 	// DeleteReservation deletes a IP address reservation
 	DeleteReservation(context.Context, net.IP, *Client) error
-
-	// ReleaseClient releases all IP address leases or reservations for the given client
-	ReleaseClient(context.Context, *Client) error
 }
 
 // Key is a key used to associate a Database with

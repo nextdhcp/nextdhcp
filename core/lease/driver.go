@@ -1,9 +1,11 @@
 package lease
 
-import "errors"
+import (
+	"errors"
+)
 
 // Factory is a database factory function
-type Factory func(opts map[string]interface{}) (Database, error)
+type Factory func(opts map[string][]string) (Database, error)
 
 var drivers = map[string]Factory{}
 
@@ -26,7 +28,7 @@ func MustRegisterDriver(name string, factory Factory) {
 }
 
 // Open opens a lease.Database using driver name
-func Open(name string, args map[string]interface{}) (Database, error) {
+func Open(name string, args map[string][]string) (Database, error) {
 	factory, ok := drivers[name]
 	if !ok {
 		return nil, errors.New("unknown driver")
@@ -36,7 +38,7 @@ func Open(name string, args map[string]interface{}) (Database, error) {
 }
 
 // MustOpen is like Open but panics on error
-func MustOpen(name string, args map[string]interface{}) Database {
+func MustOpen(name string, args map[string][]string) Database {
 	db, err := Open(name, args)
 	if err != nil {
 		panic(err)

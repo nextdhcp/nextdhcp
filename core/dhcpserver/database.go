@@ -3,11 +3,12 @@ package dhcpserver
 import "github.com/nextdhcp/nextdhcp/core/lease"
 
 func openDatabase(c *Config) error {
-	// TODO(ppacher): rework the database handling part
-	// to use a more Caddyfile like setup
-	db, err := lease.Open("", map[string]interface{}{
-		"network": c.Network,
-	})
+	// If the database is already opened we can bail out
+	if c.Database != nil {
+		return nil
+	}
+
+	db, err := lease.Open("", map[string][]string{})
 	if err != nil {
 		return err
 	}

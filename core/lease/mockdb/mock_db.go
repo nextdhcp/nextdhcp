@@ -49,10 +49,5 @@ func (m *MockDatabase) DeleteReservation(_ context.Context, ip net.IP, cli *leas
 	return m.Called(ip, cli).Error(0)
 }
 
-// ReleaseClient implements the lease.Database interface
-func (m *MockDatabase) ReleaseClient(_ context.Context, cli *lease.Client) error {
-	return m.Called(cli).Error(0)
-}
-
 // compile time check
 var _ lease.Database = &MockDatabase{}
