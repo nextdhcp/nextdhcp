@@ -1,4 +1,4 @@
-# <img src="./assets/nextdhcp-logo.svg" alt="NextDHCP" height="35px" width="160">
+# <img src="./assets/nextdhcp-logo.svg" alt="NextDHCP" height="45px" width="170px">
 
 A DHCP server that chains middlewares. Similar to Caddy and CoreDNS
 
