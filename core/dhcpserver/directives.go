@@ -8,5 +8,6 @@ var Directives = []string{
 	"servername",
 	"next-server",
 	"lease",
+	"static",
 	"range",
 }

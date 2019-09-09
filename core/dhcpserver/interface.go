@@ -1,8 +1,8 @@
 package dhcpserver
 
 import (
-	"net"
 	"fmt"
+	"net"
 )
 
 func findInterface(cfg *Config) bool {

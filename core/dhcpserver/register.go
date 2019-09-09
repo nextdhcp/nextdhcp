@@ -2,6 +2,7 @@ package dhcpserver
 
 import (
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/caddyserver/caddy"
@@ -46,7 +47,41 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 		for ki, k := range s.Keys {
 			ip, ipNet, err := net.ParseCIDR(k)
 			if err != nil {
-				return nil, fmt.Errorf("Invalid IP network address '%s' in server block %d", k, si)
+				// check if it's the interface name
+				iface, err := net.InterfaceByName(k)
+				if err != nil {
+					return nil, fmt.Errorf("Invalid IP network address or interface name '%s' in server block %d", k, si)
+				}
+
+				addr, err := iface.Addrs()
+				if err != nil {
+					return nil, fmt.Errorf("failed to enumare IP address for interface '%s': %s", iface.Name, err.Error())
+				}
+
+				// TODO(ppacher): we currently only support on IP subnet per interface
+				foundIPv4 := false
+
+				for _, a := range addr {
+					ipn, ok := a.(*net.IPNet)
+					if !ok {
+						continue
+					}
+
+					if ipn.IP.To4() == nil {
+						continue
+					}
+
+					log.Println(a)
+
+					if foundIPv4 {
+						return nil, fmt.Errorf("using interface names is only supported for exactly one assigned subnet")
+					}
+
+					foundIPv4 = true
+
+					ip = ipn.IP
+					ipNet = ipn
+				}
 			}
 
 			cfg := &Config{
@@ -69,7 +104,7 @@ func (c *dhcpContext) MakeServers() ([]caddy.Server, error) {
 			return nil, fmt.Errorf("failed to find interface for subnet %s", c.Network.String())
 		}
 
-		if err := openDatabase(c); err != nil {
+		if err := ensureDatabase(c); err != nil {
 			return nil, fmt.Errorf("failed to open database for subnet %s: %s", c.Network.String(), err.Error())
 		}
 
