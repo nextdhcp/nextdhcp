@@ -3,6 +3,7 @@ module github.com/nextdhcp/nextdhcp
 go 1.12
 
 require (
+	github.com/Knetic/govaluate v3.0.0+incompatible
 	github.com/caddyserver/caddy v1.0.3
 	github.com/etcd-io/bbolt v1.3.3
 	github.com/google/gopacket v1.1.17
