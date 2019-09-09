@@ -15,8 +15,8 @@ func init() {
 }
 
 func setupOption(c *caddy.Controller) error {
-	plg := &optionPlugin{
-		options: make(map[dhcpv4.OptionCode]dhcpv4.OptionValue),
+	plg := &OptionPlugin{
+		Options: make(map[dhcpv4.OptionCode]dhcpv4.OptionValue),
 	}
 
 	for c.Next() {
@@ -57,7 +57,7 @@ func setupOption(c *caddy.Controller) error {
 	}
 
 	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
-		plg.next = next
+		plg.Next = next
 		return plg
 	})
 
