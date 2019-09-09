@@ -35,11 +35,11 @@ func SetupMatcher(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, er
 		case "if":
 			conds = append(conds, strings.Join(disp.RemainingArgs(), " "))
 		case "if_op":
-			if !c.NextArg() {
-				return nil, c.ArgErr()
+			if !disp.NextArg() {
+				return nil, disp.ArgErr()
 			}
 
-			switch c.Val() {
+			switch disp.Val() {
 			case "and":
 				fallthrough
 			case "&&":
@@ -48,6 +48,8 @@ func SetupMatcher(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, er
 				fallthrough
 			case "||":
 				op = "||"
+			default:
+				return nil, c.ArgErr()
 			}
 		}
 	}
