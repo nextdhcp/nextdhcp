@@ -9,4 +9,5 @@ import (
 	_ "github.com/nextdhcp/nextdhcp/plugin/ranges"
 	_ "github.com/nextdhcp/nextdhcp/plugin/servername"
 	_ "github.com/nextdhcp/nextdhcp/plugin/database"
+	_ "github.com/nextdhcp/nextdhcp/plugin/static"
 )
