@@ -15,5 +15,4 @@ require (
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7
 	github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036
-	layeh.com/gopher-luar v1.0.7
 )
