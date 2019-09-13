@@ -11,14 +11,10 @@ authenticate against the gotify server please make sure to create a new applicat
 
 ## Syntax
 
-The *gotify* plugin supports two different configuration modes.
-
 ```
 gotify [CONDITION] {
     [server SERVER TOKEN]
     [message MESSAGE]
 }
-
-gotify [CONDITION]
 ```
 
