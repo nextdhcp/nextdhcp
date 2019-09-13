@@ -45,6 +45,5 @@ func TestSetupMatcher(t *testing.T) {
 			assert.NoError(t, err, testCase)
 			assert.NotNil(t, m, testCase)
 		}
-
 	}
 }

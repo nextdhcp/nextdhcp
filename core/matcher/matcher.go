@@ -4,12 +4,14 @@
 package matcher
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/Knetic/govaluate"
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/replacer"
 )
 
 type (
@@ -21,48 +23,36 @@ type (
 
 	// ExprFunc can be used expose functions to matcher expressions
 	ExprFunc func(args ...interface{}) (interface{}, error)
+
+	// evalParams implements the govaluate.Parameters interface and works on top of
+	// a DHCPv4 message
+	evalParams struct {
+		replacer replacer.Replacer
+		req      *dhcpv4.DHCPv4
+	}
 )
 
 // SetupMatcher parses the current dispenser block and returns a DHCP
 // message matcher
 func SetupMatcher(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, error) {
-	var conds []string
-	var op = "&&"
-	var disp = c.Dispenser // get a copy of the dispenser so we don't actually
-
-	for disp.NextBlock() {
-		switch disp.Val() {
-		case "if":
-			conds = append(conds, strings.Join(disp.RemainingArgs(), " "))
-		case "if_op":
-			if !disp.NextArg() {
-				return nil, disp.ArgErr()
-			}
-
-			switch disp.Val() {
-			case "and":
-				fallthrough
-			case "&&":
-				op = "&&"
-			case "or":
-				fallthrough
-			case "||":
-				op = "||"
-			default:
-				return nil, c.ArgErr()
-			}
-		}
+	exprStr, err := ParseConditions(c)
+	if err != nil {
+		return nil, err
 	}
 
-	exprStr := ""
+	return SetupMatcherString(exprStr, fns...)
+}
 
-	for i, c := range conds {
-		if i > 0 {
-			exprStr += " " + op + " "
-		}
-		exprStr += "(" + c + ")"
-	}
+// SetupMatcherRemainingArgs creates a new DHCPv4 coniditon matcher from the remaining args
+// available in the current dispenser line
+func SetupMatcherRemainingArgs(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, error) {
+	exprStr := strings.Join(c.RemainingArgs(), " ")
 
+	return SetupMatcherString(exprStr, fns...)
+}
+
+// SetupMatcherString creates a new DHCPv4 condition matcher form the provided string
+func SetupMatcherString(exprString string, fns ...map[string]ExprFunc) (*Matcher, error) {
 	functions := make(map[string]govaluate.ExpressionFunction)
 
 	for _, m := range fns {
@@ -72,11 +62,10 @@ func SetupMatcher(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, er
 	}
 
 	var expr *govaluate.EvaluableExpression
-
-	if exprStr != "" {
+	if exprString != "" {
 		var err error
 
-		expr, err = govaluate.NewEvaluableExpressionWithFunctions(exprStr, functions)
+		expr, err = govaluate.NewEvaluableExpressionWithFunctions(exprString, functions)
 		if err != nil {
 			return nil, err
 		}
@@ -89,16 +78,24 @@ func SetupMatcher(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, er
 
 // Match evaluates the expression stored in the matcher against the given request and response
 // message
-func (m *Matcher) Match(request, response dhcpv4.DHCPv4) (bool, error) {
+func (m *Matcher) Match(ctx context.Context, request *dhcpv4.DHCPv4) (bool, error) {
 	if m.expr == nil {
 		return true, nil
 	}
 
-	result, err := m.expr.Evaluate(map[string]interface{}{
-		"request":  request,
-		"response": response,
-	})
+	params := prepareEvalContext(ctx, request)
+	return m.MatchParams(params)
+}
 
+// MatchParams executes the parsed govaluate expression and returns the resulting
+// boolean output. If the return value of the expression is not a boolean an error
+// is returned
+func (m *Matcher) MatchParams(params govaluate.Parameters) (bool, error) {
+	if m.expr == nil {
+		return true, nil
+	}
+
+	result, err := m.expr.Eval(params)
 	if err != nil {
 		return false, err
 	}
@@ -108,3 +105,24 @@ func (m *Matcher) Match(request, response dhcpv4.DHCPv4) (bool, error) {
 
 	return false, fmt.Errorf("expression did not evaluate to a boolean. instead, got: %v", result)
 }
+
+// prepareEvalContext returns a new govaluate.Parameters interface that
+// works by extracting data from request
+func prepareEvalContext(ctx context.Context, request *dhcpv4.DHCPv4) govaluate.Parameters {
+	rep := replacer.NewReplacer(ctx, request)
+	return &evalParams{
+		replacer: rep,
+		req:      request,
+	}
+}
+
+func (e *evalParams) Get(name string) (interface{}, error) {
+	if e.replacer != nil {
+		value := e.replacer.Get(name)
+		return value, nil
+	}
+
+	return nil, fmt.Errorf("unknown key")
+}
+
+var _ govaluate.Parameters = &evalParams{}
