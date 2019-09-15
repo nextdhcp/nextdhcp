@@ -145,6 +145,23 @@ func (r *replacer) Get(key string) string {
 		}
 
 		return r.msg.ParameterRequestList().String()
+
+	case "state":
+		if r.msg.MessageType() == dhcpv4.MessageTypeDiscover {
+			return "binding"
+		}
+
+		if r.msg.MessageType() == dhcpv4.MessageTypeRequest {
+			if !r.msg.ClientIPAddr.IsUnspecified() {
+				return "renew"
+			}
+
+			if !r.msg.RequestedIPAddress().IsUnspecified() {
+				return "binding"
+			}
+		}
+
+		return "unknown"
 	}
 
 	// TODO(ppacher): should we make the "empty value" configurable
