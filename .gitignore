@@ -12,3 +12,4 @@
 *.out
 nextdhcp
 leases.db
+dist
