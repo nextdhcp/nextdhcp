@@ -35,7 +35,7 @@ will be sent for each message.
 This example will send a notification for each client that requests a new IP address:
 
 ```
-gotify msgtype == 'REQUEST' and clientip != '' {
+gotify msgtype == 'REQUEST' && clientip != '' {
     server https://gotify.example.com Adk57Vkdh487
     title '{msgtype} by {hostname}'
     message 'Client {hwaddr} ' 
