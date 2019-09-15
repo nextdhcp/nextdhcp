@@ -4,6 +4,7 @@ package dhcpserver
 var Directives = []string{
 	"database",
 	"interface",
+	"serverid",
 	"gotify",
 	"option",
 	"servername",
