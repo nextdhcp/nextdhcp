@@ -2,6 +2,7 @@ package replacer
 
 import (
 	"context"
+	"net"
 	"strings"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -87,6 +88,16 @@ func (r *replacer) Set(key string, val Value) {
 	r.customReplacements[key] = val
 }
 
+// ipStr converts ip to it's string representation. If ip is nil or 0 bytes long
+// an empty string is returned
+func ipStr(ip net.IP) string {
+	if ip == nil || len(ip) == 0 {
+		return ""
+	}
+
+	return ip.String()
+}
+
 func (r *replacer) Get(key string) string {
 	// try custom replacements first
 	val, ok := r.customReplacements[key]
@@ -107,16 +118,10 @@ func (r *replacer) Get(key string) string {
 		return r.msg.MessageType().String()
 
 	case "yourip":
-		if r.msg.YourIPAddr == nil {
-			return ""
-		}
-		return r.msg.YourIPAddr.String()
+		return ipStr(r.msg.YourIPAddr)
 
 	case "clientip":
-		if r.msg.ClientIPAddr == nil {
-			return ""
-		}
-		return r.msg.ClientIPAddr.String()
+		return ipStr(r.msg.ClientIPAddr)
 
 	case "hwaddr":
 		if r.msg.ClientHWAddr == nil {
@@ -125,19 +130,13 @@ func (r *replacer) Get(key string) string {
 		return r.msg.ClientHWAddr.String()
 
 	case "requestedip":
-		if r.msg.RequestedIPAddress() == nil {
-			return ""
-		}
-		return r.msg.RequestedIPAddress().String()
+		return ipStr(r.msg.RequestedIPAddress())
 
 	case "hostname":
 		return r.msg.HostName()
 
 	case "gwip":
-		if r.msg.GatewayIPAddr == nil {
-			return ""
-		}
-		return r.msg.GatewayIPAddr.String()
+		return ipStr(r.msg.GatewayIPAddr)
 
 	case "requested-options":
 		if r.msg.ParameterRequestList() == nil {
@@ -147,25 +146,29 @@ func (r *replacer) Get(key string) string {
 		return r.msg.ParameterRequestList().String()
 
 	case "state":
-		if r.msg.MessageType() == dhcpv4.MessageTypeDiscover {
-			return "binding"
-		}
-
-		if r.msg.MessageType() == dhcpv4.MessageTypeRequest {
-			if !r.msg.ClientIPAddr.IsUnspecified() {
-				return "renew"
-			}
-
-			if !r.msg.RequestedIPAddress().IsUnspecified() {
-				return "binding"
-			}
-		}
-
-		return "unknown"
+		return getClientState(r.msg)
 	}
 
 	// TODO(ppacher): should we make the "empty value" configurable
 	return ""
+}
+
+func getClientState(msg *dhcpv4.DHCPv4) string {
+	if msg.MessageType() == dhcpv4.MessageTypeDiscover {
+		return "binding"
+	}
+
+	if msg.MessageType() == dhcpv4.MessageTypeRequest {
+		if !msg.ClientIPAddr.IsUnspecified() {
+			return "renew"
+		}
+
+		if !msg.RequestedIPAddress().IsUnspecified() {
+			return "binding"
+		}
+	}
+
+	return "unknown"
 }
 
 // Replace relaces all keys in s with their counterpart. The algorithm below
