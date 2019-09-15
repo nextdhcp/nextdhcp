@@ -1,9 +1,9 @@
 package log
 
 import (
+	"github.com/apex/log"
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/plugin"
-	"github.com/sirupsen/logrus"
 )
 
 // Logger is used by NextDHCP plugins to log important information
@@ -26,5 +26,9 @@ type Logger interface {
 // returned
 func GetLogger(c *caddy.Controller, plg plugin.Handler) Logger {
 	// TODO(ppacher): fix me
-	return logrus.New()
+	if plg != nil {
+		return log.WithField("plugin", plg.Name())
+	}
+
+	return log.Log
 }

@@ -2,12 +2,11 @@ package dhcpserver
 
 import (
 	"fmt"
-	"log"
 	"net"
 
+	"github.com/apex/log"
 	"github.com/caddyserver/caddy"
 	"github.com/caddyserver/caddy/caddyfile"
-	"github.com/sirupsen/logrus"
 )
 
 const serverType = "dhcpv4"
@@ -71,8 +70,6 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 						continue
 					}
 
-					log.Println(a)
-
 					if foundIPv4 {
 						return nil, fmt.Errorf("using interface names is only supported for exactly one assigned subnet")
 					}
@@ -87,7 +84,7 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 			cfg := &Config{
 				IP:      ip,
 				Network: *ipNet,
-				logger:  logrus.New(),
+				logger:  log.Log,
 			}
 
 			configKey := keyForConfig(si, ki)

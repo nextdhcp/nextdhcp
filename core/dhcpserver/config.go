@@ -6,11 +6,11 @@ import (
 	"net"
 	"time"
 
+	"github.com/apex/log"
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/plugin"
-	"github.com/sirupsen/logrus"
 )
 
 // Config configures a DHCP server subnet
@@ -44,7 +44,7 @@ type Config struct {
 	chain plugin.Handler
 
 	// logger holds the logger instance for this subnet
-	logger *logrus.Logger
+	logger log.Interface
 }
 
 // AddPlugin adds a new plugin to the middleware chain
