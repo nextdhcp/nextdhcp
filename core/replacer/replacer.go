@@ -123,6 +123,28 @@ func (r *replacer) Get(key string) string {
 			return ""
 		}
 		return r.msg.ClientHWAddr.String()
+
+	case "requestedip":
+		if r.msg.RequestedIPAddress() == nil {
+			return ""
+		}
+		return r.msg.RequestedIPAddress().String()
+
+	case "hostname":
+		return r.msg.HostName()
+
+	case "gwip":
+		if r.msg.GatewayIPAddr == nil {
+			return ""
+		}
+		return r.msg.GatewayIPAddr.String()
+
+	case "requested-options":
+		if r.msg.ParameterRequestList() == nil {
+			return ""
+		}
+
+		return r.msg.ParameterRequestList().String()
 	}
 
 	// TODO(ppacher): should we make the "empty value" configurable
