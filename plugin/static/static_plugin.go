@@ -10,22 +10,22 @@ import (
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
-// StaticPlugin allows assignment of static IP addresses to clients
+// Plugin allows assignment of static IP addresses to clients
 // based on the MAC address. It implements plugin.Handler
-type StaticPlugin struct {
+type Plugin struct {
 	Next      plugin.Handler
 	Addresses map[string]net.IP
 	L         log.Logger
 }
 
 // Name returns "static" and implements plugin.Handler
-func (s *StaticPlugin) Name() string {
+func (s *Plugin) Name() string {
 	return "static"
 }
 
 // ServeDHCP serves a DHCP request and implements plugin.Handler. If the requesting MAC
 // address of the client is configured a static IP lease will be sent
-func (s *StaticPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	static, hasStatic := s.Addresses[req.ClientHWAddr.String()]
 	if (dhcpserver.Discover(req) || dhcpserver.Request(req)) && hasStatic {
 		// Make sure to deny a DHCPREQUEST for a different IP address

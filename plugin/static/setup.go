@@ -46,7 +46,7 @@ func setupStatic(c *caddy.Controller) error {
 	}
 
 	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
-		plg := &StaticPlugin{
+		plg := &Plugin{
 			Next:      next,
 			Addresses: addr,
 		}

@@ -15,7 +15,7 @@ func init() {
 }
 
 func setupOption(c *caddy.Controller) error {
-	plg := &OptionPlugin{
+	plg := &Plugin{
 		Options: make(map[dhcpv4.OptionCode]dhcpv4.OptionValue),
 	}
 
