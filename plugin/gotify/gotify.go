@@ -44,6 +44,10 @@ type (
 // the message body. An empty message body indicates that no notification should be
 // sent
 func (n *notification) Prepare(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, string, error) {
+	if n.msg == nil {
+		return "", "", nil
+	}
+
 	matched, err := n.Match(ctx, req)
 	if err != nil {
 		return "", "", err

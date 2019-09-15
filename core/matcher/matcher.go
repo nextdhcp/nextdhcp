@@ -87,6 +87,12 @@ func (m *Matcher) Match(ctx context.Context, request *dhcpv4.DHCPv4) (bool, erro
 	return m.MatchParams(params)
 }
 
+// EmptyCondition returns true if there's no condition for the matcher.
+// In this case, any call to Match or MatchParams will return true
+func (m *Matcher) EmptyCondition() bool {
+	return m.expr == nil
+}
+
 // MatchParams executes the parsed govaluate expression and returns the resulting
 // boolean output. If the return value of the expression is not a boolean an error
 // is returned

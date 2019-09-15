@@ -85,6 +85,10 @@ func setupGotify(c *caddy.Controller) error {
 			}
 		}
 
+		if msg == nil && !cond.EmptyCondition() {
+			return c.Err("Message must not be empty if a condition is set")
+		}
+
 		n := &notification{
 			Matcher: cond,
 			msg:     msg,
