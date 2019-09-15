@@ -99,6 +99,16 @@ func (g *gotifyPlugin) addNotification(n *notification) {
 	g.notifications = append(g.notifications, n)
 }
 
+// findLastCreds returns the last credentials used for a notification
+func (g *gotifyPlugin) findLastCreds() (string, string, bool) {
+	if len(g.notifications) == 0 {
+		return "", "", false
+	}
+
+	last := g.notifications[len(g.notifications)-1]
+	return last.srv, last.token, true
+}
+
 // Name returns "gotify" and implements plugin.Handler
 func (g *gotifyPlugin) Name() string {
 	return "gotify"

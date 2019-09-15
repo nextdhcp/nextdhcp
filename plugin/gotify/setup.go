@@ -77,7 +77,12 @@ func setupGotify(c *caddy.Controller) error {
 		}
 
 		if srv == "" || token == "" {
-			return c.Err("server keyword expected")
+			var ok bool
+			srv, token, ok = g.findLastCreds()
+
+			if !ok {
+				return c.Err("server keyword expected")
+			}
 		}
 
 		n := &notification{
