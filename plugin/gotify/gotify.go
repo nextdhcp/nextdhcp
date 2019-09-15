@@ -34,6 +34,7 @@ type (
 	notification struct {
 		*matcher.Matcher
 		msg   msgFactory
+		title msgFactory
 		srv   string
 		token string
 	}
@@ -42,25 +43,35 @@ type (
 // Prepare checks if we should send a notification for the given request and returns
 // the message body. An empty message body indicates that no notification should be
 // sent
-func (n *notification) Prepare(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
+func (n *notification) Prepare(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, string, error) {
 	matched, err := n.Match(ctx, req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if matched {
 		msg, err := n.msg(ctx, req, res)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 
-		return msg, nil
+		var title string
+
+		if n.title != nil {
+			title, _ = n.title(ctx, req, res)
+		}
+
+		if title == "" {
+			title = "NextDHCP"
+		}
+
+		return title, msg, nil
 	}
 
-	return "", nil
+	return "", "", nil
 }
 
-func (n *notification) Send(msg string) error {
+func (n *notification) Send(title, msg string) error {
 	gotifyURL, err := url.Parse(n.srv)
 	if err != nil {
 		return err
@@ -70,7 +81,7 @@ func (n *notification) Send(msg string) error {
 
 	params := message.NewCreateMessageParams()
 	params.Body = &models.MessageExternal{
-		Title:    "NextDHCP",
+		Title:    title,
 		Message:  msg,
 		Priority: 5,
 	}
@@ -103,19 +114,19 @@ func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) e
 	// kick of notifications in dedicated go routines
 	for _, n := range g.notifications {
 		go func(n *notification) {
-			body, err := n.Prepare(ctx, req, res)
+			title, body, err := n.Prepare(ctx, req, res)
 			if err != nil {
 				g.l.Warnf("failed to pepare notification: %s", err.Error())
 				return
 			}
 
 			if body != "" {
-				g.l.Debugf("sending notification: %s", body)
+				g.l.Debugf("sending notification: %s\n%s", title, body)
 
-				if err := n.Send(body); err != nil {
+				if err := n.Send(title, body); err != nil {
 					g.l.Warnf("failed to send notification: %s", err.Error())
 				} else {
-					g.l.Debugf("notification sent via %s: %s", n.srv, body)
+					g.l.Debugf("notification sent via %s: %s\n%s", n.srv, title, body)
 				}
 			}
 		}(n)

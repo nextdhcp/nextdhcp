@@ -18,9 +18,17 @@ condition to only declare the authentication token and server address.
 ```
 gotify [CONDITION] {
     [server SERVER TOKEN]
+    [title TITLE]
     [message MESSAGE]
 }
 ```
+
+* **CONDITION** is the condition that must match to send a notification via gotify. If the condition is omitted, a notification
+will be sent for each message.  
+* **SERVER** is the server address of where gotify is running  
+* **TOKEN** is the application token generated on the gotify server
+* **TITLE** is the title of the notification. All [replacement keys](../../core/replacer/README.md) are supported.
+* **MESSAGE** is the message that should be sent. All [replacement keys](../../core/replacer/README.md) are supported.
 
 ## Examples
 
@@ -29,6 +37,7 @@ This example will send a notification for each client that requests a new IP add
 ```
 gotify msgtype == 'REQUEST' and clientip != '' {
     server https://gotify.example.com Adk57Vkdh487
+    title '{msgtype} by {hostname}'
     message 'Client {hwaddr} ' 
 }
 ```
