@@ -1,3 +1,9 @@
+---
+title: "gotify"
+date: 2019-09-20T19:00:00+02:00
+draft: false
+---
+
 # gotify
 
 ## Name
