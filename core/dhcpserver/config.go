@@ -52,15 +52,15 @@ func (cfg *Config) AddPlugin(p plugin.Plugin) {
 	cfg.plugins = append(cfg.plugins, p)
 }
 
-func keyForConfig(serverBlockIndex, serverBlockKeyIndex int) string {
-	return fmt.Sprintf("%d:%d", serverBlockIndex, serverBlockKeyIndex)
+func keyForConfig(serverBlockIndex int) string {
+	return fmt.Sprintf("%d", serverBlockIndex)
 }
 
 // GetConfig gets the Config that corresponds to c
 // if none exist nil is returned
 func GetConfig(c *caddy.Controller) *Config {
 	ctx := c.Context().(*dhcpContext)
-	key := keyForConfig(c.ServerBlockIndex, c.ServerBlockKeyIndex)
+	key := keyForConfig(c.ServerBlockIndex)
 
 	cfg := ctx.keyToConfig[key]
 	return cfg
