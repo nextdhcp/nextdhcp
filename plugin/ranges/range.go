@@ -199,6 +199,8 @@ func setupRange(c *caddy.Controller) error {
 		plg.Ranges = iprange.Merge(append(plg.Ranges, r))
 	}
 
+	plg.L.Debugf("serving %d IP ranges: %v", len(plg.Ranges), plg.Ranges)
+
 	cfg.AddPlugin(func(next plugin.Handler) plugin.Handler {
 		plg.Next = next
 		return plg

@@ -43,53 +43,59 @@ func (c *dhcpContext) addConfig(key string, cfg *Config) {
 
 func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []caddyfile.ServerBlock) ([]caddyfile.ServerBlock, error) {
 	for si, s := range serverBlocks {
-		for ki, k := range s.Keys {
-			ip, ipNet, err := net.ParseCIDR(k)
+
+		if len(s.Keys) == 1 {
+			k := s.Keys[0]
+			cfg := &Config{
+				logger: log.Log,
+			}
+
+			if err := tryInterfaceNameOrIP(k, cfg); err != nil {
+				return nil, fmt.Errorf("failed to get subnet configuration for server block %s (index = %d)", k, si)
+			}
+
+			configKey := keyForConfig(si)
+			c.addConfig(configKey, cfg)
+
+			continue
+		}
+
+		if len(s.Keys) == 3 && s.Keys[1] == "-" {
+			// 10.1.0.1 - 10.1.0.100
+			startIP := net.ParseIP(s.Keys[0])
+			endIP := net.ParseIP(s.Keys[2])
+
+			iface, ipNet, err := findInterfaceContainingIP(startIP)
 			if err != nil {
-				// check if it's the interface name
-				iface, err := net.InterfaceByName(k)
-				if err != nil {
-					return nil, fmt.Errorf("Invalid IP network address or interface name '%s' in server block %d", k, si)
-				}
+				return nil, err
+			}
 
-				addr, err := iface.Addrs()
-				if err != nil {
-					return nil, fmt.Errorf("failed to enumare IP address for interface '%s': %s", iface.Name, err.Error())
-				}
-
-				// TODO(ppacher): we currently only support on IP subnet per interface
-				foundIPv4 := false
-
-				for _, a := range addr {
-					ipn, ok := a.(*net.IPNet)
-					if !ok {
-						continue
-					}
-
-					if ipn.IP.To4() == nil {
-						continue
-					}
-
-					if foundIPv4 {
-						return nil, fmt.Errorf("using interface names is only supported for exactly one assigned subnet")
-					}
-
-					foundIPv4 = true
-
-					ip = ipn.IP
-					ipNet = ipn
-				}
+			// make sure iface also contains the endIP
+			if !ipNet.Contains(endIP) {
+				return nil, fmt.Errorf("end of range not included in %s on %s", ipNet.String(), iface.Name)
 			}
 
 			cfg := &Config{
-				IP:      ip,
-				Network: *ipNet,
 				logger:  log.Log,
+				IP:      ipNet.IP,
+				Network: *ipNet,
 			}
 
-			configKey := keyForConfig(si, ki)
+			// make sure we add the range plugin now
+			// and in front of any other range plugin configuration
+			s.Tokens["range"] = append([]caddyfile.Token{
+				caddyfile.Token{Text: "range"},
+				caddyfile.Token{Text: startIP.String()},
+				caddyfile.Token{Text: endIP.String()},
+			}, s.Tokens["range"]...)
+
+			configKey := keyForConfig(si)
 			c.addConfig(configKey, cfg)
+
+			continue
 		}
+
+		return nil, fmt.Errorf("unexpected number of server block keys: %d (keys=%+v)", len(s.Keys), s.Keys)
 	}
 
 	return serverBlocks, nil
