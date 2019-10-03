@@ -29,6 +29,10 @@ type (
 		Get(msg *dhcpv4.DHCPv4) string
 	}
 
+	// ValueGetter implements the Value interface and returns a string
+	// based on the provided DHCP message
+	ValueGetter func(msg *dhcpv4.DHCPv4) string
+
 	// StringValue is a utility method to use string constants for
 	// the Value interface
 	StringValue string
@@ -41,6 +45,11 @@ type (
 		customReplacements map[string]Value // a list of custom replacements configured via Set
 	}
 )
+
+// Get implements the Value interface and calls g itself
+func (g ValueGetter) Get(m *dhcpv4.DHCPv4) string {
+	return g(m)
+}
 
 // Get implements the Value interface and returns s itself
 func (s StringValue) Get(_ *dhcpv4.DHCPv4) string {
@@ -159,11 +168,11 @@ func getClientState(msg *dhcpv4.DHCPv4) string {
 	}
 
 	if msg.MessageType() == dhcpv4.MessageTypeRequest {
-		if !msg.ClientIPAddr.IsUnspecified() {
+		if msg.ClientIPAddr != nil && !msg.ClientIPAddr.IsUnspecified() {
 			return "renew"
 		}
 
-		if !msg.RequestedIPAddress().IsUnspecified() {
+		if msg.RequestedIPAddress() != nil && !msg.RequestedIPAddress().IsUnspecified() {
 			return "binding"
 		}
 	}
