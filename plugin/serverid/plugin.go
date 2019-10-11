@@ -30,9 +30,7 @@ func (s *serverID) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error
 		return dhcpserver.ErrNoResponse
 	}
 
-	if dhcpserver.Discover(req) {
-		res.UpdateOption(dhcpv4.OptServerIdentifier(s.id))
-	}
+	res.UpdateOption(dhcpv4.OptServerIdentifier(s.id))
 
 	return s.next.ServeDHCP(ctx, req, res)
 }
