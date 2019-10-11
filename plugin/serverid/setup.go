@@ -3,6 +3,7 @@ package serverid
 import (
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -26,11 +27,14 @@ func setupServerID(c *caddy.Controller) error {
 
 	cfg := dhcpserver.GetConfig(c)
 
+	plg := &serverID{
+		id: cfg.IP,
+	}
+	plg.L = log.GetLogger(c, plg)
+
 	cfg.AddPlugin(func(next plugin.Handler) plugin.Handler {
-		return &serverID{
-			next: next,
-			id:   cfg.IP,
-		}
+		plg.next = next
+		return plg
 	})
 
 	return nil
