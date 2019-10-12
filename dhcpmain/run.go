@@ -29,6 +29,7 @@ func init() {
 
 // Run start NextDHCP and blocks until the server stopped
 func Run() {
+	flag.Parse()
 	caddy.TrapSignals()
 
 	dhcpfile, err := caddy.LoadCaddyfile(serverType)
