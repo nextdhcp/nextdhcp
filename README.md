@@ -72,7 +72,6 @@ For a list of supported plugins please checkout the content of the [*plugin*](./
 - [**nextserver**](./plugin/nextserver) - advertise a TFTP boot server
 - [**option**](./plugin/option) - configure any DHCP options
 - [**ranges**](./plugin/ranges) - lease IP addresses from pre-defined IP ranges
-- [**serverid**](./plugin/serverid) - enables the DHCP server identifier required with multiple DHCP servers
 - [**servername**](./plugin/servername) - sets the server hostname on DHCP messages
 - [**static**](./plugin/static) - lease static IP addresses to clients based on their MAC address
 - [**gotify**](./plugin/gotify) - send push notifications for IP address leases and DHCP requests via gotify
