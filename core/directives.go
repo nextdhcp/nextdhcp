@@ -11,5 +11,4 @@ import (
 	_ "github.com/nextdhcp/nextdhcp/plugin/database"
 	_ "github.com/nextdhcp/nextdhcp/plugin/static"
 	_ "github.com/nextdhcp/nextdhcp/plugin/gotify"
-	_ "github.com/nextdhcp/nextdhcp/plugin/serverid"
 )
