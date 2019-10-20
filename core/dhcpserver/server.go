@@ -130,6 +130,17 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 		return err
 	}
 
+	// If the request message has the server identifier option set we must check
+	// if it matches our server IP and drop the request entirely if not
+	reqID := msg.ServerIdentifier()
+	if reqID != nil && !reqID.IsUnspecified() && reqID.String() != cfg.IP.String() {
+		s.cfg.logger.Debugf("ignoring packet with incorrect server ID %q from %s", reqID, msg.ClientHWAddr)
+		return nil
+	}
+	// make sure to add the server identifier option to all DHCP messages
+	// as per RFC2131
+	resp.UpdateOption(dhcpv4.OptServerIdentifier(cfg.IP))
+
 	switch msg.MessageType() {
 	case dhcpv4.MessageTypeDiscover:
 		resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer))
