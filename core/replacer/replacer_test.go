@@ -57,7 +57,7 @@ func Test_Replacer_KnownKeys(t *testing.T) {
 
 	r := NewReplacer(context.Background(), msg)
 
-	t.Run("simple keys", func(t *testing.T) {
+	t.Run("simple keys and options", func(t *testing.T) {
 		cases := []struct {
 			I string
 			E string
@@ -89,6 +89,14 @@ func Test_Replacer_KnownKeys(t *testing.T) {
 			{
 				"gwip",
 				"10.0.0.4",
+			},
+			{
+				">hostname",
+				"host",
+			},
+			{
+				">unknown-option",
+				"<unknown>",
 			},
 		}
 
@@ -227,6 +235,7 @@ func Test_Replacer_Replace(t *testing.T) {
 	msg.ClientIPAddr = net.IP{10, 0, 0, 2}
 	msg.UpdateOption(dhcpv4.OptRequestedIPAddress(net.IP{10, 0, 0, 3}))
 	msg.UpdateOption(dhcpv4.OptHostName("host"))
+	msg.UpdateOption(dhcpv4.OptRouter(net.IP{10, 0, 0, 254}))
 	msg.GatewayIPAddr = net.IP{10, 0, 0, 4}
 
 	r := NewReplacer(context.Background(), msg)
@@ -250,6 +259,10 @@ func Test_Replacer_Replace(t *testing.T) {
 		{
 			"{hostname\\} {hwaddr} requested {requestedip}",
 			" requested 10.0.0.3",
+		},
+		{
+			"router is {>router}",
+			"router is 10.0.0.254",
 		},
 		{
 			"{",

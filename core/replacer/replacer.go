@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/option"
 )
 
 type (
@@ -117,8 +118,13 @@ func (r *replacer) Get(key string) string {
 	// next check if we should lookup the value
 	// from options
 	if strings.HasPrefix(key, ">") {
-		// TODO(ppacher) accessing options is unsupported right now
-		return "<unsupported>"
+		optName := strings.TrimPrefix(key, ">")
+		code, ok := option.Code(optName)
+		if !ok {
+			return "<unknown>"
+		}
+
+		return option.ToString(code, r.msg.GetOneOption(code), nil)
 	}
 
 	// try built-in keys next

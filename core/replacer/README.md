@@ -27,6 +27,11 @@ default:
 | gwip        | "10.17.0.2"          | The IP address of the relay host    |
 | state       | "renew", "binding"   | The current state of the client     |
 
+## Options
+
+The replacer also allows access to well-known DHCPv4 options by prefixing the option name with `">"`.
+For a list of available options see the documentation of the [option package](../option/README.md).
+
 ## Example
 
 The template
