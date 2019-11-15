@@ -47,17 +47,19 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 	// if there's a requested address that's not in our ranges will do nothing as another
 	// middleware might handle the request
 	if requested != nil && !requested.IsUnspecified() {
-		p.L.Debugf("%s requsted %s", mac, requested)
 		if !p.Ranges.Contains(requested) {
 			// we cannot serve the requested IP address
 			// may another middleware can
-			p.L.Debugf("we cannot serve that one ...")
+			p.L.Warnf("%s requsted %s which is not in our defined range", mac, requested)
 			return nil
 		}
 
-		if err := db.Reserve(ctx, requested, cli); err == nil {
+		err := db.Reserve(ctx, requested, cli)
+		if err == nil {
+			p.L.Debugf("%s requested previous IP address %s", mac, requested)
 			return requested
 		}
+		p.L.Warnf("%s requested previous IP address %s but we failed to reserve it: %s", mac, requested, err.Error())
 
 		// TODO(ppacher): should we check for context errors here?
 	}
@@ -97,8 +99,24 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 			return nil
 		}
 		p.L.Debugf("failed to find address for %s", req.ClientHWAddr)
-		// we failed to find an IP address for that client
-		// so fallthrough and call the next middleware
+
+		// Since we are the last plugin in the middleware chain we should do
+		// our best to find an IP address for that client. That means ingoring the
+		// requested IP address and trying again (it might be the prefered one from
+		// a different network the client was previously attached to)
+
+		// TODO(ppacher): should we try to call though the plugin-chain before trying this?
+		// Is it really safe to assume we are the last one?
+
+		if req.RequestedIPAddress() != nil && !req.RequestedIPAddress().IsUnspecified() {
+			ip := p.findUnboundAddr(ctx, req.ClientHWAddr, nil, db)
+			if ip != nil {
+				p.L.Debugf("found unbound address for %s: %s", req.ClientHWAddr, ip)
+				res.YourIPAddr = ip
+				return nil
+			}
+		}
+
 	} else
 
 	// for DHCPREQUEST we try to actually lease the IP address
