@@ -66,6 +66,7 @@ For a list of supported plugins please checkout the content of the [*plugin*](./
 
 ## Plugins
 
+- [**log**](./plugin/log) - configure log output and level
 - [**database**](./plugin/database) - the lease database to use. Defaults to the builtin [bbolt](https://github.com/etcd-io/bbolt)
 - [**ifname**](./plugin/ifname) - sets the network interface a given subnet should be served on
 - [**lease**](./plugin/lease) - configures the lease time
