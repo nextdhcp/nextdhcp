@@ -58,6 +58,9 @@ only one *option* directive
 
 ## Supported Names
 
+This plugin supports all options that are defined in the option package of NextDHCP so the below list might not be complete.
+Refer to the option package documentation for a list of all options.
+
 ### *router*
 
 Configures default gateways. Expects one or more IP addresses.

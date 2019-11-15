@@ -114,9 +114,9 @@ func UInt16Option(s string) (dhcpv4.OptionValue, error) {
 	return dhcpv4.Uint16(val), nil
 }
 
-// ParseKnownOption parses the given name and string values
+// ParseKnown parses the given name and string values
 // and returns their DHCP option representation if known
-func ParseKnownOption(name string, values []string) (dhcpv4.OptionCode, dhcpv4.OptionValue, error) {
+func ParseKnown(name string, values []string) (dhcpv4.OptionCode, dhcpv4.OptionValue, error) {
 	code, ok := options[name]
 	if ok {
 		parser := optionParser[name]
@@ -145,4 +145,10 @@ func ParseKnownOption(name string, values []string) (dhcpv4.OptionCode, dhcpv4.O
 		return code, val, nil
 	}
 	return nil, nil, fmt.Errorf("unknown option name")
+}
+
+// Code returns the DHCPv4 option code for the known option name
+func Code(name string) (dhcpv4.OptionCode, bool) {
+	code, ok := options[name]
+	return code, ok
 }

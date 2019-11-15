@@ -5,6 +5,7 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/option"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -37,7 +38,7 @@ func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 }
 
 func (p *Plugin) parseOption(name string, values []string) error {
-	c, v, err := ParseKnownOption(name, values)
+	c, v, err := option.ParseKnown(name, values)
 	if err != nil {
 		return err
 	}
