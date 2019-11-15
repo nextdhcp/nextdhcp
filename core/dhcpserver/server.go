@@ -54,7 +54,7 @@ func (s *Server) ServePacket(c net.PacketConn) error {
 		byteLen, addr, err := c.ReadFrom(payload)
 
 		if byteLen > 0 {
-			s.cfg.logger.Debugf("serving request from ", addr)
+			s.cfg.logger.Debugf("serving request from %s", addr)
 			s.dhcpWg.Add(1)
 			go s.serveAndLogDHCPv4(c, payload[:byteLen], addr)
 		}
