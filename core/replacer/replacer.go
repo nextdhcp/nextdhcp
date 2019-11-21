@@ -164,7 +164,6 @@ func (r *replacer) Get(key string) string {
 		return getClientState(r.msg)
 	}
 
-	// TODO(ppacher): should we make the "empty value" configurable
 	return ""
 }
 

@@ -6,6 +6,7 @@ require (
 	github.com/Knetic/govaluate v3.0.0+incompatible
 	github.com/apex/log v1.1.1
 	github.com/caddyserver/caddy v1.0.3
+	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/etcd-io/bbolt v1.3.3
 	github.com/google/gopacket v1.1.17
 	github.com/gotify/go-api-client/v2 v2.0.4
