@@ -76,6 +76,7 @@ For a list of supported plugins please checkout the content of the [*plugin*](./
 - [**servername**](./plugin/servername) - sets the server hostname on DHCP messages
 - [**static**](./plugin/static) - lease static IP addresses to clients based on their MAC address
 - [**gotify**](./plugin/gotify) - send push notifications for IP address leases and DHCP requests via gotify
+- [**mqtt**](./plugin/mqtt) - extract and publish DHCP request/response information to MQTT
 
 ## Versioning
 
