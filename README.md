@@ -45,9 +45,24 @@ go build -o nextdhcp ./
 
 ### Usage
 
-Before starting NextDHCP you need to create a configuration file. See [Dhcpfile](./Dhcpfile) for an example.
+Before starting NextDHCP you need to create a configuration file. A typical configuration file for a local subnet can look like this:
+
+```bash
+192.168.0.100 - 192.168.0.200
+lease 1h
+option {
+    router 192.168.0.1
+    nameserver 192.168.0.1
+}
+```
+
+Or, if you need to serve multiple subnets or multiple network interfaces you can also use dedicated blocks:
 
 ```
+10.0.0.10 - 10.0.0.20 {
+    lease 1d
+}
+
 192.168.0.1/24 {
     lease 1h
     range 192.168.0.100 192.168.0.200
@@ -56,7 +71,7 @@ Before starting NextDHCP you need to create a configuration file. See [Dhcpfile]
 }
 ```
 
-Next, we need to start the DHCP server as root:
+Place your configuration into a file called `Dhcpfile` and  start NextDHCP as root:
 
 ```
 sudo ./nextdhcp 
