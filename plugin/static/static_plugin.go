@@ -13,6 +13,7 @@ import (
 // Plugin allows assignment of static IP addresses to clients
 // based on the MAC address. It implements plugin.Handler
 type Plugin struct {
+	Config    *dhcpserver.Config
 	Next      plugin.Handler
 	Addresses map[string]net.IP
 	L         log.Logger
@@ -47,8 +48,13 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 		}
 
 		// TODO(ppacher): should we allow configuration of leaseTime or client specific options here?
-
 		res.YourIPAddr = static
+
+		// TODO(ppacher): we may remove this and make setting the subnet mask a default action of dhcpserver.Server
+		if req.IsOptionRequested(dhcpv4.OptionSubnetMask) {
+			req.UpdateOption(dhcpv4.OptSubnetMask(s.Config.Network.Mask))
+		}
+
 		s.L.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
 		return nil
 	}

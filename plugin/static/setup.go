@@ -45,10 +45,13 @@ func setupStatic(c *caddy.Controller) error {
 		addr[key] = ip
 	}
 
-	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+	cfg := dhcpserver.GetConfig(c)
+
+	cfg.AddPlugin(func(next plugin.Handler) plugin.Handler {
 		plg := &Plugin{
 			Next:      next,
 			Addresses: addr,
+			Config:    cfg,
 		}
 
 		plg.L = log.GetLogger(c, plg)
