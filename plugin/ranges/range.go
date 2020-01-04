@@ -86,16 +86,29 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 	return nil
 }
 
+func (p *RangePlugin) findAndPrepareResponse(ctx context.Context, req, res *dhcpv4.DHCPv4, requested net.IP, db lease.Database) bool {
+	ip := p.findUnboundAddr(ctx, req.ClientHWAddr, requested, db)
+	if ip != nil {
+		p.L.Debugf("found unbound address for %s: %s", req.ClientHWAddr, ip)
+		res.YourIPAddr = ip
+
+		// TODO(ppacher): should we move that to the dhcpserver.Server and make sure to always configure
+		// the subnet mask? Check the static plugin as well
+		if req.IsOptionRequested(dhcpv4.OptionSubnetMask) {
+			res.UpdateOption(dhcpv4.OptSubnetMask(p.Network.Mask))
+		}
+		return true
+	}
+	return false
+}
+
 // ServeDHCP implements the plugin.Handler interface and served DHCP requests
 func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	db := lease.GetDatabase(ctx)
 	cli := lease.Client{HwAddr: req.ClientHWAddr}
 
 	if dhcpserver.Discover(req) {
-		ip := p.findUnboundAddr(ctx, req.ClientHWAddr, req.RequestedIPAddress(), db)
-		if ip != nil {
-			p.L.Debugf("found unbound address for %s: %s", req.ClientHWAddr, ip)
-			res.YourIPAddr = ip
+		if p.findAndPrepareResponse(ctx, req, res, req.RequestedIPAddress(), db) {
 			return nil
 		}
 		p.L.Debugf("failed to find address for %s", req.ClientHWAddr)
@@ -109,10 +122,7 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 		// Is it really safe to assume we are the last one?
 
 		if req.RequestedIPAddress() != nil && !req.RequestedIPAddress().IsUnspecified() {
-			ip := p.findUnboundAddr(ctx, req.ClientHWAddr, nil, db)
-			if ip != nil {
-				p.L.Debugf("found unbound address for %s: %s", req.ClientHWAddr, ip)
-				res.YourIPAddr = ip
+			if p.findAndPrepareResponse(ctx, req, res, nil, db) {
 				return nil
 			}
 		}
