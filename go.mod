@@ -5,18 +5,44 @@ go 1.12
 require (
 	github.com/Knetic/govaluate v3.0.0+incompatible
 	github.com/apex/log v1.1.1
-	github.com/caddyserver/caddy v1.0.3
+	github.com/bifurcation/mint v0.0.0-20180715133206-93c51c6ce115 // indirect
+	github.com/caddyserver/caddy v1.0.4
+	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/etcd-io/bbolt v1.3.3
+	github.com/fatih/color v1.8.0 // indirect
+	github.com/go-acme/lego v2.7.2+incompatible // indirect
+	github.com/go-openapi/analysis v0.19.7 // indirect
+	github.com/go-openapi/errors v0.19.3 // indirect
+	github.com/go-openapi/runtime v0.19.9 // indirect
+	github.com/go-openapi/spec v0.19.5 // indirect
+	github.com/go-openapi/strfmt v0.19.4 // indirect
+	github.com/go-openapi/swag v0.19.6 // indirect
+	github.com/go-openapi/validate v0.19.5 // indirect
 	github.com/google/gopacket v1.1.17
 	github.com/gotify/go-api-client/v2 v2.0.4
-	github.com/insomniacslk/dhcp v0.0.0-20190814082028-393ae75a101b
-	github.com/mattn/go-isatty v0.0.10
-	github.com/mdlayher/raw v0.0.0-20190606144222-a54781e5f38f
+	github.com/insomniacslk/dhcp v0.0.0-20200102182701-53297fb6d37d
+	github.com/klauspost/cpuid v1.2.2 // indirect
+	github.com/lucas-clemente/aes12 v0.0.0-20171027163421-cd47fb39b79f // indirect
+	github.com/lucas-clemente/quic-clients v0.1.0 // indirect
+	github.com/lucas-clemente/quic-go-certificates v0.0.0-20160823095156-d2f86524cced // indirect
+	github.com/mattn/go-colorable v0.1.4 // indirect
+	github.com/mattn/go-isatty v0.0.11
+	github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065
+	github.com/mholt/certmagic v0.9.0 // indirect
+	github.com/miekg/dns v1.1.27 // indirect
+	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/ppacher/glua-loop v0.0.0-20190823064734-05c43452ea18
 	github.com/ppacher/webthings-mqtt-gateway v0.0.0-20190827095024-c29a6f0aa947
-	github.com/stretchr/testify v1.3.0
+	github.com/prometheus/client_golang v1.3.0 // indirect
+	github.com/stretchr/testify v1.4.0
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7
-	github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036
+	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
+	go.mongodb.org/mongo-driver v1.2.0 // indirect
+	golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876 // indirect
+	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
+	golang.org/x/sys v0.0.0-20200103143344-a1369afcdac7 // indirect
+	gopkg.in/square/go-jose.v2 v2.4.1 // indirect
+	gopkg.in/yaml.v2 v2.2.7 // indirect
 )
