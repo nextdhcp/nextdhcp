@@ -80,7 +80,7 @@ func (s *Server) Listen() (net.Listener, error) {
 // ListenPacket starts listening for DHCP request messages via UDP/Raw sockets
 // This implements the caddy.UDPServer interface
 func (s *Server) ListenPacket() (net.PacketConn, error) {
-	return socket.ListenDHCP(s.cfg.IP, &s.cfg.Interface)
+	return socket.ListenDHCP(s.cfg.logger, s.cfg.IP, &s.cfg.Interface)
 }
 
 // OnStartupComplete is called when all serves of the same instance have
@@ -130,6 +130,8 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 		return err
 	}
 
+	resp.ServerIPAddr = cfg.IP
+
 	// If the request message has the server identifier option set we must check
 	// if it matches our server IP and drop the request entirely if not
 	reqID := msg.ServerIdentifier()
@@ -153,6 +155,8 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 		resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNone))
 	}
 
+	cfg.logger.Debugf("-> %s from %s (%s)", msg.MessageType(), addr, msg.HostName())
+
 	ctx := context.Background()
 	ctx = lease.WithDatabase(ctx, cfg.Database)
 	ctx = WithPeer(ctx, addr)
@@ -166,9 +170,35 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 		return nil
 	}
 
+	// Some clients require a directed unicast with correct destination IP (the same as in resp.YourIPAddr) and source MAC and IP.
+	// Android for example ignores a DHCPOFFER that originates from 255.255.255.255 (ff:ff:ff:ff:ff:ff) rather than the specific
+	// interface IP and hardware address.
+	addr = tryMakeDirectedUnicastAddr(addr, cfg, resp)
+
+	cfg.logger.Debugf("<- %s to %s (%s)", resp.MessageType(), addr, msg.HostName())
+
 	response := resp.ToBytes()
 	_, err = c.WriteTo(response, addr)
 	return err
+}
+
+// tryMakeDirectiryUnicastAddres checks if addr is a *socket.Addr and updates the Local and Remote address pair (IP + MAC) to
+// be as specific as possible by replacing an unspecified/broadcast source with the interface IP and MAC and an unspecified
+// destination with the to-be-leased IP address from resp.YourIPAddr.
+func tryMakeDirectedUnicastAddr(addr net.Addr, cfg *Config, resp *dhcpv4.DHCPv4) net.Addr {
+	if a, ok := addr.(*socket.Addr); ok {
+		if a.Local.IP.IsUnspecified() || a.Local.IP.String() == "255.255.255.255" {
+			cfg.logger.Debugf("setting sender from %s (%s) to %s (%s)", a.Local.IP, a.Local.MAC, cfg.IP, cfg.Interface.HardwareAddr)
+			a.Local.MAC = cfg.Interface.HardwareAddr
+			a.Local.IP = cfg.IP
+		}
+
+		if a.RawAddr.IP.IsUnspecified() && resp.YourIPAddr != nil && !resp.YourIPAddr.IsUnspecified() {
+			a.RawAddr.IP = resp.YourIPAddr
+		}
+	}
+
+	return addr
 }
 
 // Compile-Time check
