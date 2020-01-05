@@ -145,11 +145,10 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			if err != nil {
 				return err
 			}
+			// we need to treat expired leases as invalid and always need to renew them if possible
+			expired := time.Unix(existing.Expires, 0).Before(time.Now())
 
 			if existing.MAC == cli.HwAddr.String() {
-				// we need to treat expired leases as invalid and always need to renew them if possible
-				expired := time.Unix(existing.Expires, 0).Before(time.Now())
-
 				if renew || expired {
 					existing.Expires = time.Now().Add(leaseTime).Unix()
 
@@ -165,10 +164,13 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 				} else {
 					activeLeaseTime = time.Unix(existing.Expires, 0).Sub(time.Now())
 				}
+
 				return nil
 			}
 
-			return lease.ErrAddressReserved
+			if !expired {
+				return lease.ErrAddressReserved
+			} // else fallthrough and overwrite the reservation for the new client
 		}
 
 		b := binding{
@@ -184,9 +186,7 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			return err
 		}
 
-		bucket.Put(key, value)
-
-		return nil
+		return bucket.Put(key, value)
 	})
 
 	if err == nil {
