@@ -22,7 +22,7 @@ func (m *MockDatabase) Leases(context.Context) ([]lease.Lease, error) {
 }
 
 // ReservedAddresses implements the lease.Database interface
-func (m *MockDatabase) ReservedAddresses(context.Context) ([]lease.ReservedAddress, error) {
+func (m *MockDatabase) ReservedAddresses(context.Context) (lease.ReservedAddressList, error) {
 	args := m.Called()
 
 	return args.Get(0).([]lease.ReservedAddress), args.Error(1)
