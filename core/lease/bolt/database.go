@@ -84,7 +84,7 @@ func (db *Database) Leases(ctx context.Context) ([]lease.Lease, error) {
 }
 
 // ReservedAddresses implements lease.Database
-func (db *Database) ReservedAddresses(ctx context.Context) ([]lease.ReservedAddress, error) {
+func (db *Database) ReservedAddresses(ctx context.Context) (lease.ReservedAddressList, error) {
 	bindings := db.loadBindings(ctx, reservationBucket)
 	var addr []lease.ReservedAddress
 
@@ -147,7 +147,10 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			}
 
 			if existing.MAC == cli.HwAddr.String() {
-				if renew {
+				// we need to treat expired leases as invalid and always need to renew them if possible
+				expired := time.Unix(existing.Expires, 0).Before(time.Now())
+
+				if renew || expired {
 					existing.Expires = time.Now().Add(leaseTime).Unix()
 
 					blob, err := existing.serialize()
@@ -160,7 +163,7 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 					}
 					activeLeaseTime = leaseTime
 				} else {
-					activeLeaseTime = time.Now().Sub(time.Unix(existing.Expires, 0))
+					activeLeaseTime = time.Unix(existing.Expires, 0).Sub(time.Now())
 				}
 				return nil
 			}

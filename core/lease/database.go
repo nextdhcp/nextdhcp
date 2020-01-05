@@ -29,7 +29,7 @@ type Database interface {
 
 	// ReservedAddresses returns a slice of currently reserved IP addresses
 	// These addresses will not be used when search for available addresses
-	ReservedAddresses(context.Context) ([]ReservedAddress, error)
+	ReservedAddresses(context.Context) (ReservedAddressList, error)
 
 	// Reserve tries to reserve the IP address for a client
 	Reserve(context.Context, net.IP, Client) error

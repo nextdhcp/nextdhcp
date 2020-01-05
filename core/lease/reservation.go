@@ -26,3 +26,50 @@ func (r ReservedAddress) Expired(t time.Time) bool {
 
 	return r.Expires.After(t)
 }
+
+// ReservedAddressList adds utility methods to a slice of ReservedAddress'es
+type ReservedAddressList []ReservedAddress
+
+// FindIP searches the list of reserved addresses for ip
+func (rl ReservedAddressList) FindIP(ip net.IP) *ReservedAddress {
+	for _, r := range rl {
+		if r.IP.Equal(ip) {
+			return &r
+		}
+	}
+
+	return nil
+}
+
+// FindMAC searches the list of reserved addresses for mac
+func (rl ReservedAddressList) FindMAC(mac net.HardwareAddr) *ReservedAddress {
+	for _, r := range rl {
+		if r.HwAddr.String() == mac.String() {
+			return &r
+		}
+	}
+
+	return nil
+}
+
+// FindHostname searches the list of reserved addresses for name
+func (rl ReservedAddressList) FindHostname(name string) *ReservedAddress {
+	for _, r := range rl {
+		if r.Hostname == name {
+			return &r
+		}
+	}
+
+	return nil
+}
+
+// FindID searches the list of reserved addresses for ID
+func (rl ReservedAddressList) FindID(id string) *ReservedAddress {
+	for _, r := range rl {
+		if r.ID == id {
+			return &r
+		}
+	}
+
+	return nil
+}

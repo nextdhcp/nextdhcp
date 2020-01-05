@@ -47,7 +47,7 @@ func (db *database) Leases(ctx context.Context) ([]lease.Lease, error) {
 	return leases, nil
 }
 
-func (db *database) ReservedAddresses(ctx context.Context) ([]lease.ReservedAddress, error) {
+func (db *database) ReservedAddresses(ctx context.Context) (lease.ReservedAddressList, error) {
 	if !db.l.TryLock(ctx) {
 		return nil, ctx.Err()
 	}
@@ -121,7 +121,7 @@ func (db *database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 
 	if l, ok := db.leasedAddresses[key]; ok {
 		if l.HwAddr.String() == cli.HwAddr.String() {
-			if renewExisting {
+			if renewExisting || l.Expired() {
 				l.Expires = time.Now().Add(leaseTime)
 			}
 			return l.Expires.Sub(time.Now()), nil
