@@ -138,9 +138,12 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 	if dhcpserver.Request(req) {
 		state := "binding"
 		ip := req.RequestedIPAddress()
-		if ip == nil || ip.IsUnspecified() {
-			ip = req.ClientIPAddr
-			state = "renewing"
+
+		if req.ClientIPAddr != nil && !req.ClientIPAddr.IsUnspecified() {
+			if ip == nil || ip.IsUnspecified() || req.ClientIPAddr.Equal(ip) {
+				ip = req.ClientIPAddr
+				state = "renewing"
+			}
 		}
 
 		if ip != nil && !ip.IsUnspecified() {
@@ -150,11 +153,14 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 			// else we fallback to time.Hour
 			// TODO(ppacher): we should make the default lease time configurable
 			// for the ranges plguin
-			leaseTime := res.IPAddressLeaseTime(time.Hour)
+			activeLeaseTime := res.IPAddressLeaseTime(time.Hour)
+			renewLeaseTime := state == "renewing"
 
-			leaseTime, err := db.Lease(ctx, ip, cli, leaseTime, state == "renewing")
+			leaseTime, err := db.Lease(ctx, ip, cli, activeLeaseTime, renewLeaseTime)
+
 			if err == nil {
-				p.L.Infof("%s (%s): lease %s for %s", req.ClientHWAddr, state, ip, leaseTime)
+				p.L.Infof("%s (%s): lease %s for %s (activeLeaseTime: %s)", req.ClientHWAddr, state, ip, leaseTime, activeLeaseTime)
+
 				if leaseTime == time.Hour {
 					// if we use the default, make sure to set it
 					res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
@@ -171,7 +177,21 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 
 				return nil
 			}
+
 			p.L.Errorf("%s: failed to lease requested ip %s: %s", req.ClientHWAddr, ip, err.Error())
+			if err == lease.ErrAddressReserved {
+				reservedAddresses, raErr := db.ReservedAddresses(ctx)
+				if raErr == nil {
+					entry := reservedAddresses.FindIP(ip)
+					if entry == nil {
+						p.L.Errorf("%s: Database.Lease failed but IP %s is not reserved", req.ClientHWAddr, ip)
+					} else {
+						p.L.Errorf("%s: IP %s is already reserved for %s and expires %s (expired=%v)", req.ClientHWAddr, ip, entry.Client, entry.Expires, entry.Expired(time.Now()))
+					}
+				} else {
+					p.L.Debugf("%s: failed to get list of reserved addresses: %s", req.ClientHWAddr, raErr)
+				}
+			}
 		}
 	} else
 
