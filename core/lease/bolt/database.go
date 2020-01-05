@@ -110,10 +110,20 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 	return db.Update(func(tx *bbolt.Tx) error {
 		key := []byte(ip)
 		bucket := tx.Bucket(reservationBucket)
+		existingBlob := bucket.Get(key)
 
-		if bucket.Get(key) != nil {
-			return lease.ErrAddressReserved
+		if existingBlob != nil {
+			existing, err := loadBinding(existingBlob)
+			if err != nil {
+				return err
+			}
+
+			expired := time.Unix(existing.Expires, 0).Before(time.Now())
+			if !expired {
+				return lease.ErrAddressReserved
+			} // else fallthrough and overwrite the existing reservation
 		}
+
 		b := binding{
 			Created:  time.Now().Unix(),
 			Expires:  time.Now().Add(time.Minute).Unix(),
@@ -125,9 +135,7 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 			return err
 		}
 
-		bucket.Put(key, value)
-
-		return nil
+		return bucket.Put(key, value)
 	})
 }
 
