@@ -9,7 +9,7 @@ func ensureDatabase(c *Config) error {
 	}
 
 	db, err := lease.Open("bolt", map[string][]string{
-		"file": []string{c.IP.String() + ".db"},
+		"file": {c.IP.String() + ".db"},
 	})
 	if err != nil {
 		return err

@@ -27,7 +27,7 @@ func setupInterface(c *caddy.Controller) error {
 		if err != nil {
 			return fmt.Errorf("failed to find interface with name %s: %s", c.Val(), err.Error())
 		}
-		
+
 		config.Interface = *iface
 	}
 

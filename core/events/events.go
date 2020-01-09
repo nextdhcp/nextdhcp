@@ -24,8 +24,8 @@ type (
 
 var (
 	validLeaseEvents = map[caddy.EventName]struct{}{
-		EventLeaseCreated: struct{}{},
-		EventLeaseExpired: struct{}{},
+		EventLeaseCreated: {},
+		EventLeaseExpired: {},
 	}
 )
 

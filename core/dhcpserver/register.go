@@ -84,9 +84,9 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 			// make sure we add the range plugin now
 			// and in front of any other range plugin configuration
 			s.Tokens["range"] = append([]caddyfile.Token{
-				caddyfile.Token{Text: "range"},
-				caddyfile.Token{Text: startIP.String()},
-				caddyfile.Token{Text: endIP.String()},
+				{Text: "range"},
+				{Text: startIP.String()},
+				{Text: endIP.String()},
 			}, s.Tokens["range"]...)
 
 			configKey := keyForConfig(si)

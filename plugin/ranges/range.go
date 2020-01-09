@@ -160,18 +160,14 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 
 			if err == nil {
 				p.L.Infof("%s (%s): lease %s for %s (activeLeaseTime: %s)", req.ClientHWAddr, state, ip, leaseTime, activeLeaseTime)
-
 				if leaseTime == time.Hour {
-					// if we use the default, make sure to set it
 					res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
 				}
 
 				// make sure we ACK the DHCPREQUEST
 				res.YourIPAddr = ip
 
-				if res.SubnetMask() == nil || res.SubnetMask().String() == "0.0.0.0" {
-					res.UpdateOption(dhcpv4.OptSubnetMask(p.Network.Mask))
-				}
+				p.maySetSubnetMask(req, res)
 
 				res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
 
@@ -179,19 +175,7 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 			}
 
 			p.L.Errorf("%s: failed to lease requested ip %s: %s", req.ClientHWAddr, ip, err.Error())
-			if err == lease.ErrAddressReserved {
-				reservedAddresses, raErr := db.ReservedAddresses(ctx)
-				if raErr == nil {
-					entry := reservedAddresses.FindIP(ip)
-					if entry == nil {
-						p.L.Errorf("%s: Database.Lease failed but IP %s is not reserved", req.ClientHWAddr, ip)
-					} else {
-						p.L.Errorf("%s: IP %s is already reserved for %s and expires %s (expired=%v)", req.ClientHWAddr, ip, entry.Client, entry.Expires, entry.Expired(time.Now()))
-					}
-				} else {
-					p.L.Debugf("%s: failed to get list of reserved addresses: %s", req.ClientHWAddr, raErr)
-				}
-			}
+			p.logAddressReservedError(ctx, err, db, ip, req)
 		}
 	} else
 
@@ -206,6 +190,33 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 	}
 
 	return p.Next.ServeDHCP(ctx, req, res)
+}
+
+func (p *RangePlugin) maySetSubnetMask(req, res *dhcpv4.DHCPv4) {
+	if !req.IsOptionRequested(dhcpv4.OptionSubnetMask) {
+		return
+	}
+
+	if res.SubnetMask() == nil || res.SubnetMask().String() == "0.0.0.0" {
+		res.UpdateOption(dhcpv4.OptSubnetMask(p.Network.Mask))
+	}
+}
+
+func (p *RangePlugin) logAddressReservedError(ctx context.Context, err error, db lease.Database, ip net.IP, req *dhcpv4.DHCPv4) {
+	if err != lease.ErrAddressReserved {
+		return
+	}
+	reservedAddresses, raErr := db.ReservedAddresses(ctx)
+	if raErr == nil {
+		entry := reservedAddresses.FindIP(ip)
+		if entry == nil {
+			p.L.Errorf("%s: Database.Lease failed but IP %s is not reserved", req.ClientHWAddr, ip)
+		} else {
+			p.L.Errorf("%s: IP %s is already reserved for %s and expires %s (expired=%v)", req.ClientHWAddr, ip, entry.Client, entry.Expires, entry.Expired(time.Now()))
+		}
+	} else {
+		p.L.Debugf("%s: failed to get list of reserved addresses: %s", req.ClientHWAddr, raErr)
+	}
 }
 
 // Name returns "range" and implements the plugin.Handler interface
