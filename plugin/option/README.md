@@ -23,7 +23,7 @@ The *option* plugin may be used multiple times per server-block.
 option NAME VALUE...
 ```
 
-* **NAME** is the well-known name of the option. See below for a list of supported names.
+* **NAME** is the well-known name of the option. See below for a list of supported names
 * **VALUE** one or more values for the option. The actual format of the value depends on the option name.
 
 ```
@@ -34,6 +34,16 @@ option {
 ```
 
 The *option* plugin allows multiple DHCP options to be configured at once by using a `{}` block add adding multiple NAME/VALUE pairs (one per line).
+
+### Custom Options
+
+Since the list of option names supported by this plugin is limited it is also possible to configure any DHCP option by specifying it the one-byte option code as the name (prefixed with `0x`) and specify the payload as an hex encoded string. For example, the following is equal to `option router 10.1.0.1`:
+
+```
+option 0x03 0x0100010a
+```
+
+The option code and the required payload encoding can be looked up in the RFC defining the option you want to use.
 
 ## Examples
 
