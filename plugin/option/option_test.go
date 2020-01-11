@@ -46,15 +46,15 @@ func TestCustomOption(t *testing.T) {
 		},
 	}
 
-	for _, c := range cases {
+	for idx, c := range cases {
 		o, v, err := parseCustomOption(c.Name, c.Value)
 
 		if err == nil {
-			assert.Equal(t, c.Code, o.Code())
-			assert.Equal(t, c.Payload, v.ToBytes())
-			assert.False(t, c.Err, "expected an error")
+			assert.Equal(t, c.Code, o.Code(), "case %d: code does not match", idx)
+			assert.Equal(t, c.Payload, v.ToBytes(), "case %d: payload does not match", idx)
+			assert.False(t, c.Err, "case %d: expected an error", idx)
 		} else {
-			assert.True(t, c.Err)
+			assert.True(t, c.Err, "case %d: did not expect an error but got %s", idx, err.Error())
 		}
 	}
 }
