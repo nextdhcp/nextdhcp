@@ -16,7 +16,9 @@ type (
 )
 
 var (
-	customOption = dhcpv4.OptionCode(nil)
+	// ErrUnknownOption is returned from ParseKnown when the option name is not defined
+	// in the list below
+	ErrUnknownOption = errors.New("unknown option")
 
 	options = map[string]dhcpv4.OptionCode{
 		// IP list options
@@ -144,7 +146,7 @@ func ParseKnown(name string, values []string) (dhcpv4.OptionCode, dhcpv4.OptionV
 
 		return code, val, nil
 	}
-	return nil, nil, fmt.Errorf("unknown option name")
+	return nil, nil, ErrUnknownOption
 }
 
 // Code returns the DHCPv4 option code for the known option name

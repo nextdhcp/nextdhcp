@@ -79,7 +79,7 @@ func SetupMatcherString(exprString string, fns ...map[string]ExprFunc) (*Matcher
 // Match evaluates the expression stored in the matcher against the given request and response
 // message
 func (m *Matcher) Match(ctx context.Context, request *dhcpv4.DHCPv4) (bool, error) {
-	if m.expr == nil {
+	if m.EmptyCondition() {
 		return true, nil
 	}
 
