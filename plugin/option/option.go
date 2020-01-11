@@ -2,6 +2,9 @@ package option
 
 import (
 	"context"
+	"encoding/hex"
+	"strconv"
+	"strings"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
@@ -40,10 +43,49 @@ func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 func (p *Plugin) parseOption(name string, values []string) error {
 	c, v, err := option.ParseKnown(name, values)
 	if err != nil {
-		return err
+		if err != option.ErrUnknownOption {
+			return err
+		}
+
+		// check if we can parse a custom option
+		c, v, err = parseCustomOption(name, values)
+		if err != nil {
+			return err
+		}
 	}
 
 	p.Options[c] = v
 
 	return nil
+}
+
+func parseCustomOption(name string, values []string) (dhcpv4.OptionCode, dhcpv4.OptionValue, error) {
+	// ParseUint handles octal, hex and binary values as well so let's just try to get a byte option
+	// code
+	code, err := strconv.ParseUint(name, 0, 8)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var payloads [][]byte
+	for _, v := range values {
+		if strings.HasPrefix(v, "0x") {
+			v = strings.TrimPrefix(v, "0x")
+		}
+
+		b, err := hex.DecodeString(v)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		payloads = append(payloads, b)
+	}
+
+	// now merge the payloads into one byte slice
+	value := dhcpv4.OptionGeneric{}
+	for _, p := range payloads {
+		value.Data = append(value.Data, p...)
+	}
+
+	return dhcpv4.GenericOptionCode(code), value, nil
 }
