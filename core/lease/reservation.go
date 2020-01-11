@@ -24,7 +24,7 @@ func (r ReservedAddress) Expired(t time.Time) bool {
 		return false
 	}
 
-	return r.Expires.After(t)
+	return r.Expires.Before(t)
 }
 
 // ReservedAddressList adds utility methods to a slice of ReservedAddress'es
