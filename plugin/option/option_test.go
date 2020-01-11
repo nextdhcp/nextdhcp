@@ -24,7 +24,7 @@ func TestCustomOption(t *testing.T) {
 			false,
 		},
 		{
-			"0b10001000",
+			"0x88",
 			[]string{"fe"},
 			0x88,
 			[]byte{0xfe},
