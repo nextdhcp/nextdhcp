@@ -41,12 +41,16 @@ func EmitLeaseEvent(event caddy.EventName, l *lease.Lease) {
 }
 
 // RegisterLeaseEventHook registers a new lease event hook
-func RegisterLeaseEventHook(event caddy.EventName, hook LeaseEventHook) {
+func RegisterLeaseEventHook(name string, event caddy.EventName, hook LeaseEventHook) {
 	if _, ok := validLeaseEvents[event]; !ok {
 		panic("invalid lease event name")
 	}
 
-	caddy.RegisterEventHook(string(event), func(e caddy.EventName, value interface{}) error {
+	caddy.RegisterEventHook(name, func(e caddy.EventName, value interface{}) error {
+		if event != e {
+			return nil
+		}
+
 		return hook(event, value.(*lease.Lease))
 	})
 }
