@@ -1,14 +1,18 @@
-# <img src="./assets/nextdhcp-logo.svg" alt="NextDHCP" height="45px" width="170px">
 
-A DHCP server that chains middlewares. Similar to Caddy and CoreDNS
+# NextDHCP
+
+<img src="./assets/nextdhcp-logo.svg" align="right" width="200" alt="NextDHCP">
 
 [![Build Status](https://travis-ci.com/nextdhcp/nextdhcp.svg?branch=master)](https://travis-ci.com/nextdhcp/nextdhcp)
 [![codecov](https://codecov.io/gh/ppacher/dhcp-ng/branch/master/graph/badge.svg)](https://codecov.io/gh/nextdhcp/nextdhcp)
 [![Go Report Card](https://goreportcard.com/badge/github.com/nextdhcp/nextdhcp)](https://goreportcard.com/report/github.com/nextdhcp/nextdhcp)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/nextdhcp/nextdhcp)](https://github.com/nextdhcp/nextdhcp/releases)
 
+A DHCP server that chains middlewares. Similar to Caddy and CoreDNS
 
 NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's based on the [Caddy server framework](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/). 
+
+<hr color="#6ad7e5">
 
 ## Getting Started
 
