@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_IPRange_Len(t *testing.T) {
@@ -32,6 +33,21 @@ func Test_IPRange_Len(t *testing.T) {
 				End:   net.ParseIP("10.0.1.100"),
 			},
 			356,
+		},
+		// invalid ranges
+		{
+			IPRange{
+				Start: nil,
+				End:   net.ParseIP("10.0.1.100"),
+			},
+			0,
+		},
+		{
+			IPRange{
+				Start: net.ParseIP("10.0.1.10"),
+				End:   net.IP{0, 1},
+			},
+			0,
 		},
 	}
 
@@ -277,4 +293,55 @@ func Test_deleteRange(t *testing.T) {
 		res := DeleteFrom(c.D, c.I)
 		assert.Equal(t, c.E, res, "Test case #%d failed", i)
 	}
+}
+
+func TestIPRange_ByIdx(t *testing.T) {
+	r := IPRange{
+		Start: net.IP{10, 8, 0, 10},
+		End:   net.IP{10, 8, 0, 20},
+	}
+
+	assert.Equal(t, net.IP{10, 8, 0, 10}, r.ByIdx(0))
+	assert.Equal(t, net.IP{10, 8, 0, 15}, r.ByIdx(5))
+	assert.Equal(t, net.IP{10, 8, 0, 20}, r.ByIdx(10))
+
+	// invalid range
+	r = IPRange{
+		Start: nil,
+		End:   net.IP{10, 8, 0, 20},
+	}
+
+	assert.Nil(t, r.ByIdx(1))
+}
+
+func TestIPRange_String(t *testing.T) {
+	r := IPRange{
+		Start: net.IP{10, 8, 0, 10},
+		End:   net.IP{10, 8, 0, 20},
+	}
+
+	assert.Equal(t, "10.8.0.10-10.8.0.20", r.String())
+}
+
+func TestIPRange_Validate(t *testing.T) {
+	r := IPRange{
+		Start: net.IP{10, 8, 0, 10},
+		End:   net.IP{10, 8, 0, 20},
+	}
+
+	assert.NoError(t, r.Validate())
+
+	r.Start = nil
+	require.Error(t, r.Validate())
+	assert.Equal(t, "Invalid start IP", r.Validate().Error())
+
+	r.Start = net.IP{10, 8, 0, 10}
+	r.End = nil
+	require.Error(t, r.Validate())
+	assert.Equal(t, "Invalid end IP", r.Validate().Error())
+
+	r.End = net.IP{10, 8, 0, 1}
+	r.Start = net.IP{10, 8, 0, 10}
+	require.Error(t, r.Validate())
+	assert.Equal(t, "Invalid range", r.Validate().Error())
 }
