@@ -85,6 +85,7 @@ func (db *database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 			if r.Expired(time.Now()) {
 				t := time.Now().Add(time.Minute)
 				r.Expires = &t
+				db.reservedAddresses[key] = r
 			}
 
 			return nil // already reserved for client

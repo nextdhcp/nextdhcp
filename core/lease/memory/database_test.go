@@ -160,15 +160,27 @@ func Test_Database_Reserve(t *testing.T) {
 	addReservedIP(db, "192.168.0.12", "aa:bb:cc:dd:ee:ff")
 	assert.Error(t, db.Reserve(ctx, net.IP{192, 168, 0, 12}, *defaultClient))
 
-	// address already reserved for us
+	// address already leased for us
 	db = getTestDatabase(t)
 	addLeasedIP(db, "192.168.0.13", defaultClientMAC)
 	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 13}, *defaultClient))
-	// TODO(ppacher): test expiration time handling
+
+	db = getTestDatabase(t)
+	addReservedIP(db, "192.168.0.15", defaultClientMAC)
+	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 15}, *defaultClient))
+
+	db = getTestDatabase(t)
+	key := addReservedIP(db, "192.168.0.16", defaultClientMAC)
+	ago := time.Now().Add(-time.Hour)
+	addr := db.reservedAddresses[key]
+	addr.Expires = &ago
+	db.reservedAddresses[key] = addr
+	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 16}, *defaultClient))
+	assert.True(t, db.reservedAddresses[key].Expires.After(time.Now()))
 
 	db = getTestDatabase(t)
 	assert.NoError(t, db.Reserve(ctx, net.IP{192, 168, 0, 14}, *defaultClient))
-	key, _ := iprange.IP2Int(net.IP{192, 168, 0, 14})
+	key, _ = iprange.IP2Int(net.IP{192, 168, 0, 14})
 	assert.Len(t, db.reservedAddresses, 1)
 	assert.Equal(t, net.IP{192, 168, 0, 14}, db.reservedAddresses[key].IP)
 	assert.Equal(t, defaultClient.HwAddr, db.reservedAddresses[key].Client.HwAddr)
