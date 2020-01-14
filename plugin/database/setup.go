@@ -1,8 +1,6 @@
 package database
 
 import (
-	"fmt"
-
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/lease"
@@ -39,7 +37,6 @@ func parseDatabaseDirective(c *caddy.Controller) error {
 		return c.ArgErr()
 	}
 
-	fmt.Println("opening database: ", driverName)
 	db, err := lease.Open(driverName, options)
 	if err != nil {
 		return err
