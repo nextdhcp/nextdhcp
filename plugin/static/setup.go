@@ -18,45 +18,59 @@ func init() {
 }
 
 func setupStatic(c *caddy.Controller) error {
-	addr := make(map[string]net.IP)
-
-	for c.Next() {
-		if !c.NextArg() {
-			return c.ArgErr()
-		}
-
-		key := c.Val()
-		if _, err := net.ParseMAC(key); err != nil {
-			return c.ArgErr()
-		}
-
-		if !c.NextArg() {
-			return c.ArgErr()
-		}
-		ip := net.ParseIP(c.Val())
-		if ip == nil {
-			return c.ArgErr()
-		}
-
-		if e, ok := addr[key]; ok {
-			return fmt.Errorf("Static IP address %s has already been configured for client %s", e.String(), key)
-		}
-
-		addr[key] = ip
+	plg, err := makeStaticPlugin(c)
+	if err != nil {
+		return err
 	}
 
-	cfg := dhcpserver.GetConfig(c)
-
-	cfg.AddPlugin(func(next plugin.Handler) plugin.Handler {
-		plg := &Plugin{
-			Next:      next,
-			Addresses: addr,
-			Config:    cfg,
-		}
-
-		plg.L = log.GetLogger(c, plg)
+	plg.Config.AddPlugin(func(next plugin.Handler) plugin.Handler {
+		plg.Next = next
 
 		return plg
 	})
 	return nil
+}
+
+func makeStaticPlugin(c *caddy.Controller) (*Plugin, error) {
+	addr := make(map[string]net.IP)
+	ips := make(map[string]struct{})
+
+	for c.Next() {
+		if !c.NextArg() {
+			return nil, c.ArgErr()
+		}
+
+		key := c.Val()
+		if _, err := net.ParseMAC(key); err != nil {
+			return nil, c.ArgErr()
+		}
+
+		if !c.NextArg() {
+			return nil, c.ArgErr()
+		}
+		ip := net.ParseIP(c.Val())
+		if ip == nil {
+			return nil, c.ArgErr()
+		}
+
+		if e, ok := addr[key]; ok {
+			return nil, fmt.Errorf("Static IP address %s has already been configured for client %s", e.String(), key)
+		}
+
+		if _, ok := ips[ip.String()]; ok {
+			return nil, fmt.Errorf("IP %s already used for client %s", ip, key)
+		}
+
+		addr[key] = ip
+		ips[ip.String()] = struct{}{}
+	}
+
+	plg := &Plugin{
+		Addresses: addr,
+		Config:    dhcpserver.GetConfig(c),
+	}
+
+	plg.L = log.GetLogger(c, plg)
+
+	return plg, nil
 }
