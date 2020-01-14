@@ -20,6 +20,20 @@ func init() {
 }
 
 func setupGotify(c *caddy.Controller) error {
+	g, err := makeGotifyPlugin(c)
+	if err != nil {
+		return err
+	}
+
+	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+		g.next = next
+		return g
+	})
+
+	return nil
+}
+
+func makeGotifyPlugin(c *caddy.Controller) (*gotifyPlugin, error) {
 	g := &gotifyPlugin{}
 	g.l = log.GetLogger(c, g)
 
@@ -33,14 +47,14 @@ func setupGotify(c *caddy.Controller) error {
 
 		cond, err := matcher.SetupMatcherRemainingArgs(c)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		for c.NextBlock() {
 			switch c.Val() {
 			case "message", "m":
 				if !c.NextArg() {
-					return c.ArgErr()
+					return nil, c.ArgErr()
 				}
 				m := c.Val()
 				msg = func(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
@@ -51,7 +65,7 @@ func setupGotify(c *caddy.Controller) error {
 				}
 			case "title", "t":
 				if !c.NextArg() {
-					return c.ArgErr()
+					return nil, c.ArgErr()
 				}
 
 				t := c.Val()
@@ -63,16 +77,17 @@ func setupGotify(c *caddy.Controller) error {
 
 			case "server":
 				if !c.NextArg() {
-					return c.ArgErr()
+					return nil, c.ArgErr()
 				}
 				srv = c.Val()
 
 				if !c.NextArg() {
-					return c.ArgErr()
+					return nil, c.ArgErr()
 				}
 				token = c.Val()
+
 			default:
-				return c.ArgErr()
+				return nil, c.ArgErr()
 			}
 		}
 
@@ -81,12 +96,12 @@ func setupGotify(c *caddy.Controller) error {
 			srv, token, ok = g.findLastCreds()
 
 			if !ok {
-				return c.Err("server keyword expected")
+				return nil, c.Err("server keyword expected")
 			}
 		}
 
 		if msg == nil && !cond.EmptyCondition() {
-			return c.Err("Message must not be empty if a condition is set")
+			return nil, c.Err("Message must not be empty if a condition is set")
 		}
 
 		n := &notification{
@@ -100,10 +115,5 @@ func setupGotify(c *caddy.Controller) error {
 		g.addNotification(n)
 	}
 
-	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
-		g.next = next
-		return g
-	})
-
-	return nil
+	return g, nil
 }

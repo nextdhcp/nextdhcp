@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sync"
 
 	"github.com/gotify/go-api-client/v2/auth"
 	"github.com/gotify/go-api-client/v2/client/message"
@@ -27,6 +28,7 @@ type (
 		next          plugin.Handler
 		notifications []*notification
 		l             log.Logger
+		wg            sync.WaitGroup // used in tests to wait until all notifications are sent
 	}
 
 	// notification combines the matcher (condition) and a message
@@ -37,6 +39,20 @@ type (
 		title msgFactory
 		srv   string
 		token string
+	}
+
+	// notifyFunc for sending a notification via gotify. Used for unit testing
+	notifyFunc func(srv *url.URL, token string, msg *message.CreateMessageParams) error
+)
+
+var (
+	// notification function that actually sends the notification via gotify
+	// defined as a variable so it can be mocked in unit tests
+	notify notifyFunc = func(gotifyURL *url.URL, token string, msg *message.CreateMessageParams) error {
+		cli := gotify.NewClient(gotifyURL, &http.Client{})
+
+		_, err := cli.Message.CreateMessage(msg, auth.TokenAuth(token))
+		return err
 	}
 )
 
@@ -76,13 +92,6 @@ func (n *notification) Prepare(ctx context.Context, req, res *dhcpv4.DHCPv4) (st
 }
 
 func (n *notification) Send(title, msg string) error {
-	gotifyURL, err := url.Parse(n.srv)
-	if err != nil {
-		return err
-	}
-
-	cli := gotify.NewClient(gotifyURL, &http.Client{})
-
 	params := message.NewCreateMessageParams()
 	params.Body = &models.MessageExternal{
 		Title:    title,
@@ -90,12 +99,12 @@ func (n *notification) Send(title, msg string) error {
 		Priority: 5,
 	}
 
-	_, err = cli.Message.CreateMessage(params, auth.TokenAuth(n.token))
+	gotifyURL, err := url.Parse(n.srv)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	return notify(gotifyURL, n.token, params)
 }
 
 // addNotification adds a new notification to the gotify plugin
@@ -126,8 +135,11 @@ func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) e
 	}
 
 	// kick of notifications in dedicated go routines
+	g.wg.Add(len(g.notifications))
 	for _, n := range g.notifications {
 		go func(n *notification) {
+			defer g.wg.Done()
+
 			title, body, err := n.Prepare(ctx, req, res)
 			if err != nil {
 				g.l.Warnf("failed to pepare notification: %s", err.Error())
