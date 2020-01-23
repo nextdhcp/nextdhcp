@@ -10,6 +10,7 @@ import (
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/lease"
+	dhcpLog "github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -49,6 +50,7 @@ type Config struct {
 
 // AddPlugin adds a new plugin to the middleware chain
 func (cfg *Config) AddPlugin(p plugin.Plugin) {
+	cfg.logger.Debugf("registered plugin %#v", p)
 	cfg.plugins = append(cfg.plugins, p)
 }
 
@@ -69,22 +71,24 @@ func GetConfig(c *caddy.Controller) *Config {
 func buildMiddlewareChain(cfg *Config) error {
 	var endOfChainHandler plugin.HandlerFunc = func(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 		peer := GetPeer(ctx)
+		l := dhcpLog.With(ctx, cfg.logger)
 
 		// if it's a DHCPREQUEST that we didn't handle yet we will send
 		// DHCPNAK
 		if Request(req) {
-			cfg.logger.Infof("unhandled DHCPREQUEST, responding with DHCPNAK")
+			l.Warnf("unhandled DHCPREQUEST, responding with DHCPNAK")
 			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
 			return nil
 		}
 
-		cfg.logger.Infof("%s from %s not handled. dropping", req.MessageType().String(), peer)
+		l.Infof("%s from %s not handled. dropping", req.MessageType().String(), peer)
 		return ErrNoResponse
 	}
 
 	var chain plugin.Handler = endOfChainHandler
 	for i := len(cfg.plugins) - 1; i >= 0; i-- {
 		chain = cfg.plugins[i](chain)
+		cfg.logger.Debugf("plugin (%d) %s setup", i, chain.Name())
 	}
 
 	cfg.chain = chain

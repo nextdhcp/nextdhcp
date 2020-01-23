@@ -11,6 +11,7 @@ import (
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/socket"
 )
 
@@ -160,6 +161,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 	ctx := context.Background()
 	ctx = lease.WithDatabase(ctx, cfg.Database)
 	ctx = WithPeer(ctx, addr)
+	ctx = log.AddRequestFields(ctx, msg)
 
 	err = cfg.chain.ServeDHCP(ctx, msg, resp)
 	if err != nil && err != ErrNoResponse {
@@ -170,10 +172,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 		return nil
 	}
 
-	// Some clients require a directed unicast with correct destination IP (the same as in resp.YourIPAddr) and source MAC and IP.
-	// Android for example ignores a DHCPOFFER that originates from 255.255.255.255 (ff:ff:ff:ff:ff:ff) rather than the specific
-	// interface IP and hardware address.
-	addr = tryMakeDirectedUnicastAddr(addr, cfg, resp)
+	addr = updateConnectionAddresses(ctx, addr, cfg, msg, resp)
 
 	cfg.logger.Debugf("<- %s to %s (%s)", resp.MessageType(), addr, msg.HostName())
 
@@ -182,19 +181,65 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 	return err
 }
 
-// tryMakeDirectiryUnicastAddres checks if addr is a *socket.Addr and updates the Local and Remote address pair (IP + MAC) to
-// be as specific as possible by replacing an unspecified/broadcast source with the interface IP and MAC and an unspecified
-// destination with the to-be-leased IP address from resp.YourIPAddr.
-func tryMakeDirectedUnicastAddr(addr net.Addr, cfg *Config, resp *dhcpv4.DHCPv4) net.Addr {
+// updateConnectionAddresses tries to get the correct source and destination connection tuples (IP + MAC)
+// as defined by RCP
+func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, req, resp *dhcpv4.DHCPv4) net.Addr {
+	l := log.With(ctx, cfg.logger)
+
+	// From RFC (https://tools.ietf.org/html/rfc2131):
+	//
+	// (relays not yet supported)
+	//
+	// [If the 'giaddr' field in a DHCP message from a client is non-zero,
+	// the server sends any return messages to the 'DHCP server' port on the
+	// BOOTP relay agent whose address appears in 'giaddr'.] If the 'giaddr'
+	// field is zero and the 'ciaddr' field is nonzero, then the server
+	// unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
+	// If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
+	// set, then the server broadcasts DHCPOFFER and DHCPACK messages to
+	// 0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
+	// 'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
+	// messages to the client's hardware address and 'yiaddr' address.  In
+	// all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
+	// messages to 0xffffffff.
 	if a, ok := addr.(*socket.Addr); ok {
+		// if we known our local IP and MAC address we'll use that for sending
 		if a.Local.IP.IsUnspecified() || a.Local.IP.String() == "255.255.255.255" {
-			cfg.logger.Debugf("setting sender from %s (%s) to %s (%s)", a.Local.IP, a.Local.MAC, cfg.IP, cfg.Interface.HardwareAddr)
 			a.Local.MAC = cfg.Interface.HardwareAddr
 			a.Local.IP = cfg.IP
 		}
 
-		if a.RawAddr.IP.IsUnspecified() && resp.YourIPAddr != nil && !resp.YourIPAddr.IsUnspecified() {
-			a.RawAddr.IP = resp.YourIPAddr
+		if req.GatewayIPAddr == nil || req.GatewayIPAddr.IsUnspecified() {
+			if req.ClientIPAddr != nil && !req.ClientIPAddr.IsUnspecified() {
+				if Offer(resp) || Ack(resp) {
+					a.RawAddr.IP = req.ClientIPAddr
+					l.Debugf("unicasting to ciaddr %s (%s)", req.ClientIPAddr, a.RawAddr.MAC)
+					return a
+				}
+			}
+
+			if req.ClientIPAddr == nil || req.ClientIPAddr.IsUnspecified() {
+				if req.IsBroadcast() {
+					a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
+					l.Debugf("broadcasting to %s (%s) (broadcast bit set)", a.RawAddr.IP, a.RawAddr.MAC)
+				} else {
+					a.RawAddr.IP = resp.YourIPAddr
+					l.Debugf("unicasting to yiaddr %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
+				}
+
+				return addr
+			}
+
+			if Nak(resp) {
+				a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
+				l.Debugf("broadcasting to %s (%s) (NAK)", a.RawAddr.IP, a.RawAddr.MAC)
+				return addr
+			}
+
+			l.Debugf("sending (unmodified) response to %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
+		} else {
+			l.Warnf("DHCP relay agents are not yet supported. giaddr=%s", req.GatewayIPAddr)
+			return addr
 		}
 	}
 
