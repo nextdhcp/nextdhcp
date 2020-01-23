@@ -1,7 +1,6 @@
 package lease
 
 import (
-	"fmt"
 	"net"
 	"time"
 )
@@ -27,17 +26,6 @@ func (l *Lease) ExpiredAt(t time.Time) bool {
 // Expired returns true if the lease has already been expired
 func (l *Lease) Expired() bool {
 	return l.ExpiredAt(time.Now())
-}
-
-// String implements fmt.Stringer
-func (l *Lease) String() string {
-	suffix := ""
-	if l.Expired() {
-		suffix = "expired"
-	} else {
-		suffix = fmt.Sprintf("expires in %s", l.Expires.Sub(time.Now()))
-	}
-	return fmt.Sprintf("%s (%s; %s)", l.Address.String(), l.HwAddr, suffix)
 }
 
 // Clone returns a deep copy of the lease

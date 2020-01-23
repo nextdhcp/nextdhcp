@@ -345,3 +345,22 @@ func TestIPRange_Validate(t *testing.T) {
 	require.Error(t, r.Validate())
 	assert.Equal(t, "Invalid range", r.Validate().Error())
 }
+
+func TestIPRanges(t *testing.T) {
+	ranges := IPRanges{
+		&IPRange{
+			Start: net.IP{10, 8, 0, 10},
+			End:   net.IP{10, 8, 0, 20},
+		},
+		&IPRange{
+			Start: net.IP{10, 8, 0, 100},
+			End:   net.IP{10, 8, 0, 102},
+		},
+	}
+
+	assert.Equal(t, "10.8.0.10-10.8.0.20, 10.8.0.100-10.8.0.102", ranges.String())
+	assert.True(t, ranges.Contains(net.IP{10, 8, 0, 10}))
+	assert.True(t, ranges.Contains(net.IP{10, 8, 0, 15}))
+	assert.False(t, ranges.Contains(net.IP{10, 8, 0, 21}))
+	assert.True(t, ranges.Contains(net.IP{10, 8, 0, 101}))
+}

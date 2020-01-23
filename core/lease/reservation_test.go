@@ -22,6 +22,11 @@ func TestReservedAddressExpired(t *testing.T) {
 
 	assert.True(t, r.Expired(time.Now().Add(time.Hour)))
 	assert.False(t, r.Expired(time.Now()))
+
+	// Should never expire
+	r.Expires = nil
+	assert.False(t, r.Expired(time.Now()))
+	assert.False(t, r.Expired(time.Now().Add(time.Hour*24*356)))
 }
 
 func makeReservedAddressList() ReservedAddressList {
