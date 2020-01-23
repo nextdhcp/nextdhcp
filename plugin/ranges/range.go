@@ -48,7 +48,7 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 	// if there's a requested IP address will try that first if it's part of our range
 	// if there's a requested address that's not in our ranges will do nothing as another
 	// middleware might handle the request
-	if requested != nil && !requested.IsUnspecified() {
+	if ipIsSet(requested) {
 		if !p.Ranges.Contains(requested) {
 			// we cannot serve the requested IP address
 			// may another middleware can
@@ -124,7 +124,7 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 		// TODO(ppacher): should we try to call though the plugin-chain before trying this?
 		// Is it really safe to assume we are the last one?
 
-		if req.RequestedIPAddress() != nil && !req.RequestedIPAddress().IsUnspecified() {
+		if ipIsSet(req.RequestedIPAddress()) {
 			if p.findAndPrepareResponse(ctx, req, res, nil, db) {
 				return nil
 			}
@@ -141,14 +141,14 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 		state := "binding"
 		ip := req.RequestedIPAddress()
 
-		if req.ClientIPAddr != nil && !req.ClientIPAddr.IsUnspecified() {
-			if ip == nil || ip.IsUnspecified() || req.ClientIPAddr.Equal(ip) {
+		if ipIsSet(req.ClientIPAddr) {
+			if ipIsUnset(ip) || req.ClientIPAddr.Equal(ip) {
 				ip = req.ClientIPAddr
 				state = "renewing"
 			}
 		}
 
-		if ip != nil && !ip.IsUnspecified() {
+		if ipIsSet(ip) {
 			l.Debugf("%s (%s) requests %s", req.ClientHWAddr, state, ip)
 
 			if !p.Ranges.Contains(ip) {
@@ -278,4 +278,12 @@ func setupRange(c *caddy.Controller) error {
 	})
 
 	return nil
+}
+
+func ipIsUnset(ip net.IP) bool {
+	return ip == nil || ip.IsUnspecified()
+}
+
+func ipIsSet(ip net.IP) bool {
+	return ip != nil && !ip.IsUnspecified()
 }
