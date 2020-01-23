@@ -129,6 +129,8 @@ func (g *gotifyPlugin) Name() string {
 
 // ServeDHCP checks if we should send a notification for that DHCP message
 func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+	l := log.With(ctx, g.l)
+
 	// let the whole handler chain pass through
 	if err := g.next.ServeDHCP(ctx, req, res); err != nil {
 		return err
@@ -142,17 +144,17 @@ func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) e
 
 			title, body, err := n.Prepare(ctx, req, res)
 			if err != nil {
-				g.l.Warnf("failed to pepare notification: %s", err.Error())
+				l.Warnf("failed to pepare notification: %s", err.Error())
 				return
 			}
 
 			if body != "" {
-				g.l.Debugf("sending notification: %s\n%s", title, body)
+				l.Debugf("sending notification: %s\n%s", title, body)
 
 				if err := n.Send(title, body); err != nil {
-					g.l.Warnf("failed to send notification: %s", err.Error())
+					l.Warnf("failed to send notification: %s", err.Error())
 				} else {
-					g.l.Debugf("notification sent via %s: %s\n%s", n.srv, title, body)
+					l.Debugf("notification sent via %s: %s\n%s", n.srv, title, body)
 				}
 			}
 		}(n)

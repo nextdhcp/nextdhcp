@@ -54,6 +54,7 @@ func (m *mqttPlugin) Name() string {
 // ServeDHCP forwards the DHCP request and sends any MQTT notifications configured.
 // It implements plugin.Handler
 func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dhcpv4.DHCPv4) error {
+	l := log.With(ctx, m.l)
 	if err := m.next.ServeDHCP(ctx, req, resp); err != nil {
 		return err
 	}
@@ -62,35 +63,35 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 		go func(cfg *mqttConfig) {
 			match, err := cfg.Match(ctx, req)
 			if err != nil {
-				m.l.Errorf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
+				l.Errorf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
 				return
 			}
 
 			if match {
 				cli, qos, err := m.getClient(cfg)
 				if err != nil {
-					m.l.Errorf("failed to get MQTT connection for %q: %s", cfg.name, err.Error())
+					l.Errorf("failed to get MQTT connection for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				topic, err := cfg.topic(ctx, req, nil)
 				if err != nil {
-					m.l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
+					l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				payload, err := cfg.payload(ctx, req, nil)
 				if err != nil {
-					m.l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
+					l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				if token := cli.Publish(topic, byte(qos), false, payload); token.Wait() && token.Error() != nil {
-					m.l.Errorf("failed to publish MQTT message for %q: %s", cfg.name, token.Error())
+					l.Errorf("failed to publish MQTT message for %q: %s", cfg.name, token.Error())
 					return
 				}
 
-				m.l.Debugf("published MQTT message to topic %s", topic)
+				l.Debugf("published MQTT message to topic %s", topic)
 			}
 		}(cfg)
 	}
