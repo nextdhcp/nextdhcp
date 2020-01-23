@@ -4,7 +4,7 @@
 <img src="./assets/nextdhcp-logo.svg" align="right" width="200" alt="NextDHCP">
 
 [![Build Status](https://travis-ci.com/nextdhcp/nextdhcp.svg?branch=master)](https://travis-ci.com/nextdhcp/nextdhcp)
-[![codecov](https://codecov.io/gh/ppacher/dhcp-ng/branch/master/graph/badge.svg)](https://codecov.io/gh/nextdhcp/nextdhcp)
+[![codecov](https://codecov.io/gh/nextdhcp/nextdhcp/branch/master/graph/badge.svg)](https://codecov.io/gh/nextdhcp/nextdhcp)
 [![Go Report Card](https://goreportcard.com/badge/github.com/nextdhcp/nextdhcp)](https://goreportcard.com/report/github.com/nextdhcp/nextdhcp)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/nextdhcp/nextdhcp)](https://github.com/nextdhcp/nextdhcp/releases)
 
