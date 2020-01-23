@@ -43,7 +43,6 @@ func (c *dhcpContext) addConfig(key string, cfg *Config) {
 
 func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []caddyfile.ServerBlock) ([]caddyfile.ServerBlock, error) {
 	for si, s := range serverBlocks {
-
 		if len(s.Keys) == 1 {
 			k := s.Keys[0]
 			cfg := &Config{
@@ -91,6 +90,10 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 
 			configKey := keyForConfig(si)
 			c.addConfig(configKey, cfg)
+
+			// Update the server block keys because caddy would otherwise call
+			// the setup function for each server block key
+			serverBlocks[si].Keys = []string{iface.Name}
 
 			continue
 		}
