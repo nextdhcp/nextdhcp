@@ -10,6 +10,7 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/mdlayher/raw"
 	"github.com/nextdhcp/nextdhcp/core/log"
+	interfaces "github.com/nextdhcp/nextdhcp/core/utils/iface"
 )
 
 var (
@@ -27,41 +28,13 @@ var (
 	}
 )
 
-func interfaceByIP(ip net.IP) (*net.Interface, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, ifn := range ifaces {
-		addrs, err := ifn.Addrs()
-		if err != nil {
-			return nil, err
-		}
-
-		for _, a := range addrs {
-			n, ok := a.(*net.IPNet)
-			if !ok {
-				// Not a IP network so we can safely skip it
-				continue
-			}
-
-			if n.Contains(ip) {
-				return &ifn, nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("interface not found for IP %s", ip.String())
-}
-
 // ListenDHCP starts listening for DHCP requests on the given IP and interface
 // It opens a UDP and a AF_PACKET socket for communication
 func ListenDHCP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, error) {
 	// If not interface is provided try to lookup the correct one
 	if iface == nil {
 		var err error
-		iface, err = interfaceByIP(ip)
+		iface, err = interfaces.ByIP(ip)
 		if err != nil {
 			return nil, err
 		}
@@ -203,13 +176,11 @@ func (p *DHCPConn) SetDeadline(t time.Time) error {
 }
 
 // SetReadDeadline implements the PacketConn interface
-// but is not yet implemented
 func (p *DHCPConn) SetReadDeadline(t time.Time) error {
 	return p.raw.SetReadDeadline(t)
 }
 
 // SetWriteDeadline implements the PacketConn interface
-// but is not yet implemented
 func (p *DHCPConn) SetWriteDeadline(t time.Time) error {
 	firstErr := p.raw.SetWriteDeadline(t)
 	if secondErr := p.udp.SetWriteDeadline(t); secondErr != nil && firstErr == nil {
