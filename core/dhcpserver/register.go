@@ -7,6 +7,7 @@ import (
 	"github.com/apex/log"
 	"github.com/caddyserver/caddy"
 	"github.com/caddyserver/caddy/caddyfile"
+	"github.com/nextdhcp/nextdhcp/core/utils/iface"
 )
 
 const serverType = "dhcpv4"
@@ -49,9 +50,12 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 				logger: log.Log,
 			}
 
-			if err := tryInterfaceNameOrIP(k, cfg); err != nil {
-				return nil, fmt.Errorf("failed to get subnet configuration for server block %s (index = %d)", k, si)
+			ip, inet, err := iface.ByNameOrCIDR(k)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get subnet configuration for server block %s (index = %d): %s", k, si, err.Error())
 			}
+			cfg.IP = ip
+			cfg.Network = *inet
 
 			configKey := keyForConfig(si)
 			c.addConfig(configKey, cfg)
@@ -64,7 +68,7 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 			startIP := net.ParseIP(s.Keys[0])
 			endIP := net.ParseIP(s.Keys[2])
 
-			iface, ipNet, err := findInterfaceContainingIP(startIP)
+			iface, ipNet, err := iface.Contains(startIP)
 			if err != nil {
 				return nil, err
 			}
@@ -130,4 +134,18 @@ func (c *dhcpContext) MakeServers() ([]caddy.Server, error) {
 	}
 
 	return servers, nil
+}
+
+func findInterface(cfg *Config) bool {
+	if cfg.Interface.Name != "" && len(cfg.Interface.HardwareAddr) > 0 {
+		return true
+	}
+
+	iface, err := iface.ByIP(cfg.IP)
+	if err != nil {
+		return false
+	}
+
+	cfg.Interface = *iface
+	return true
 }

@@ -1,29 +1,16 @@
-package dhcpserver
+// Package iface contains utility methods for interacting with
+// network interface
+package iface
 
 import (
 	"fmt"
 	"net"
 )
 
-func findInterface(cfg *Config) bool {
-	if cfg.Interface.Name != "" && len(cfg.Interface.HardwareAddr) > 0 {
-		return true
-	}
-
-	iface, err := findInterfaceByIP(cfg.IP)
-	if err != nil {
-		//log.Println(err.Error())
-		return false
-	}
-
-	cfg.Interface = *iface
-	return true
-}
-
-// findInterfaceByIP searches for the network interface that has
+// ByIP searches for the network interface that has
 // ip assigned to it. The IP address must be the same, IPs in
 // the same subnet do not count as a match
-func findInterfaceByIP(ip net.IP) (*net.Interface, error) {
+func ByIP(ip net.IP) (*net.Interface, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -41,8 +28,6 @@ func findInterfaceByIP(ip net.IP) (*net.Interface, error) {
 				continue
 			}
 
-			//log.Println(iface.Name, a)
-
 			if ipNet.IP.Equal(ip) {
 				return &iface, nil
 			}
@@ -52,9 +37,9 @@ func findInterfaceByIP(ip net.IP) (*net.Interface, error) {
 	return nil, fmt.Errorf("failed to find interface for %s", ip.String())
 }
 
-// findInterfaceContainingIPs searches for the network interface that
+// Contains searches for the network interface that
 // contains the given IP address in one of it's attached local networks
-func findInterfaceContainingIP(ip net.IP) (*net.Interface, *net.IPNet, error) {
+func Contains(ip net.IP) (*net.Interface, *net.IPNet, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, nil, err
@@ -82,28 +67,26 @@ func findInterfaceContainingIP(ip net.IP) (*net.Interface, *net.IPNet, error) {
 	return nil, nil, fmt.Errorf("failed to find interface with %s", ip.String())
 }
 
-// tryInterfaceNameOrIP first tries to parse a CIDR IP subnet
+// ByNameOrCIDR first tries to parse a CIDR IP subnet
 // notation in value and will fill the IP and IPNet values of
 // cfg accordingly. If value is not a valid CIDR notation
 // it will assume value is the name of the interface and will
 // lookup the IP configuration there. If that fails too, an
 // error is returned
-func tryInterfaceNameOrIP(value string, cfg *Config) error {
+func ByNameOrCIDR(value string) (net.IP, *net.IPNet, error) {
 	ip, ipNet, err := net.ParseCIDR(value)
 	if err == nil {
-		cfg.IP = ip
-		cfg.Network = *ipNet
-		return nil
+		return ip, ipNet, nil
 	}
 
 	iface, err := net.InterfaceByName(value)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	addr, err := iface.Addrs()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	foundIPv4 := false
@@ -121,7 +104,7 @@ func tryInterfaceNameOrIP(value string, cfg *Config) error {
 		}
 
 		if foundIPv4 {
-			return fmt.Errorf("interface names can only be used with one subnet assigned")
+			return nil, nil, fmt.Errorf("interface names can only be used with one subnet assigned")
 		}
 
 		foundIPv4 = true
@@ -131,11 +114,8 @@ func tryInterfaceNameOrIP(value string, cfg *Config) error {
 	}
 
 	if !foundIPv4 {
-		return fmt.Errorf("no usable subnet found")
+		return nil, nil, fmt.Errorf("no usable subnet found")
 	}
 
-	cfg.IP = ip
-	cfg.Network = *ipNet
-
-	return nil
+	return ip, ipNet, nil
 }
