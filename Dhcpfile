@@ -1,10 +1,4 @@
-10.100.0.1/24 {
-    interface enp0s25
-    range 10.1.0.100 10.1.0.200
-    lease 1m
-}
-
-10.1.1.1/24 {
-    range 10.1.1.100 10.1.1.150
-    lease 1h
-}
+10.100.0.150 - 10.100.0.155
+interface vboxnet1
+lease 2m
+log debug

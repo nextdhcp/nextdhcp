@@ -1,6 +1,6 @@
 package dhcpserver
 
-import "github.com/nextdhcp/nextdhcp/core/lease"
+import "github.com/nextdhcp/nextdhcp/core/lease/storage"
 
 func ensureDatabase(c *Config) error {
 	// If the database is already opened we can bail out
@@ -8,14 +8,14 @@ func ensureDatabase(c *Config) error {
 		return nil
 	}
 
-	db, err := lease.Open("bolt", map[string][]string{
+	db, err := storage.Open("bolt", map[string][]string{
 		"file": {c.IP.String() + ".db"},
 	})
 	if err != nil {
 		return err
 	}
 
-	c.Database = db
+	c.Database = storage.NewDatabase(db)
 
 	return nil
 }

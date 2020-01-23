@@ -3,16 +3,15 @@ package bolt
 import (
 	"fmt"
 
-	"github.com/etcd-io/bbolt"
-	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage"
+	"go.etcd.io/bbolt"
 )
 
 func init() {
-	lease.MustRegisterDriver("bolt", Setup)
+	storage.MustRegister("bolt", storageFactory)
 }
 
-// Setup implements lease.Factory and opens a new bolt database
-func Setup(arguments map[string][]string) (lease.Database, error) {
+func storageFactory(arguments map[string][]string) (storage.LeaseStorage, error) {
 	file := ""
 
 	if args, ok := arguments["__args__"]; ok {
@@ -32,10 +31,7 @@ func Setup(arguments map[string][]string) (lease.Database, error) {
 		return nil, err
 	}
 
-	d := &Database{DB: db}
-	if err := d.Setup(); err != nil {
-		return nil, err
-	}
+	d := &Storage{db: db}
 
 	return d, nil
 }

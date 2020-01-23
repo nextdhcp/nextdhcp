@@ -3,7 +3,7 @@ package database
 import (
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 )
 
 func init() {
@@ -37,10 +37,12 @@ func parseDatabaseDirective(c *caddy.Controller) error {
 		return c.ArgErr()
 	}
 
-	db, err := lease.Open(driverName, options)
+	store, err := storage.Open(driverName, options)
 	if err != nil {
 		return err
 	}
+
+	db := storage.NewDatabase(store)
 
 	dhcpserver.GetConfig(c).Database = db
 

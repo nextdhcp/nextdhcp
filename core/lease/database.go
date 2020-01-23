@@ -24,22 +24,36 @@ var (
 // Database describes a lease database interface
 type Database interface {
 	// Leases returns all registered and not-yet-released IP address
-	// leases
+	// leases. IP leases that are already expired are returned as well
 	Leases(context.Context) ([]Lease, error)
 
-	// ReservedAddresses returns a slice of currently reserved IP addresses
-	// These addresses will not be used when search for available addresses
+	// ReservedAddresses returns a slice of currently reserved IP
+	// addresses. These addresses will not be used when search for
+	// available addresses. Reservations that already expired are
+	// returned as well
 	ReservedAddresses(context.Context) (ReservedAddressList, error)
 
 	// Reserve tries to reserve the IP address for a client
+	// If the IP address is already reserved for a different client,
+	// and those reservation has not expired an error is returned.
+	// If theres no reservation for the IP (or it has expired),
+	// a new reservation is stored. Note that it is not possible
+	// to increase the expiration time of an existing,
+	// not-yet-expired, reservation
 	Reserve(context.Context, net.IP, Client) error
 
-	// Lease an IP address for a client. The IP address must either already be leased to the
-	// client or have been reserved for it
+	// Lease an IP address for a client. The IP address must
+	// either already be leased to the client or have been reserved
+	// for it. if renew is set, the lease time will always be
+	// updated. Otherwise, the lease time will only be updated if
+	// the lease already expired. The returned lease time indicates
+	// the active lease time either with or without renewal. Any
+	// pending reservation for this IP address will be removed
 	Lease(context.Context, net.IP, Client, time.Duration, bool) (time.Duration, error)
 
-	// Release releases a previous client IP address lease. If no such lease exists the list
-	// of reserved IP addresses is checked and any reservation for the client is removed
+	// Release releases a previous client IP address lease. If no
+	// such lease exists the list of reserved IP addresses is
+	// checked and any reservation for the client is removed
 	Release(context.Context, net.IP) error
 
 	// DeleteReservation deletes a IP address reservation

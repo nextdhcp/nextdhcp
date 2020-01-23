@@ -6,6 +6,5 @@ import (
 
 	// And the built-in in-memory lease database
 	// as well as the bolddb based one
-	_ "github.com/nextdhcp/nextdhcp/core/lease/bolt"
-	_ "github.com/nextdhcp/nextdhcp/core/lease/memory"
+	_ "github.com/nextdhcp/nextdhcp/core/lease/storage/drivers"
 )
