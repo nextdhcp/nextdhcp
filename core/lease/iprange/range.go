@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
 )
 
 // IPRange is a range of IP address from (inclusive) start to (inclusive)
@@ -167,6 +168,16 @@ func (ranges IPRanges) Contains(ip net.IP) bool {
 	}
 
 	return false
+}
+
+func (ranges IPRanges) String() string {
+	s := make([]string, 0, len(ranges))
+
+	for _, r := range ranges {
+		s = append(s, r.String())
+	}
+
+	return strings.Join(s, ", ")
 }
 
 // Merge merges multiple IP ranges and combins overlapping ranges
