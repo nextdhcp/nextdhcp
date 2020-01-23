@@ -38,6 +38,8 @@ type RangePlugin struct {
 }
 
 func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr, requested net.IP, db lease.Database) net.IP {
+	l := log.With(ctx, p.L)
+
 	cli := lease.Client{
 		HwAddr: mac,
 		ID:     mac.String(),
@@ -50,16 +52,16 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 		if !p.Ranges.Contains(requested) {
 			// we cannot serve the requested IP address
 			// may another middleware can
-			p.L.Warnf("%s requsted %s which is not in our defined range", mac, requested)
+			l.Warnf("%s requsted %s which is not in our defined range", mac, requested)
 			return nil
 		}
 
 		err := db.Reserve(ctx, requested, cli)
 		if err == nil {
-			p.L.Debugf("%s requested previous IP address %s", mac, requested)
+			l.Debugf("%s requested previous IP address %s", mac, requested)
 			return requested
 		}
-		p.L.Warnf("%s requested previous IP address %s but we failed to reserve it: %s", mac, requested, err.Error())
+		l.Warnf("%s requested previous IP address %s but we failed to reserve it: %s", mac, requested, err.Error())
 
 		// TODO(ppacher): should we check for context errors here?
 	}
@@ -89,7 +91,7 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 func (p *RangePlugin) findAndPrepareResponse(ctx context.Context, req, res *dhcpv4.DHCPv4, requested net.IP, db lease.Database) bool {
 	ip := p.findUnboundAddr(ctx, req.ClientHWAddr, requested, db)
 	if ip != nil {
-		p.L.Debugf("found unbound address for %s: %s", req.ClientHWAddr, ip)
+		log.With(ctx, p.L).Debugf("found unbound address for %s: %s", req.ClientHWAddr, ip)
 		res.YourIPAddr = ip
 
 		// TODO(ppacher): should we move that to the dhcpserver.Server and make sure to always configure
@@ -104,6 +106,7 @@ func (p *RangePlugin) findAndPrepareResponse(ctx context.Context, req, res *dhcp
 
 // ServeDHCP implements the plugin.Handler interface and served DHCP requests
 func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+	l := log.With(ctx, p.L)
 	db := lease.GetDatabase(ctx)
 	cli := lease.Client{HwAddr: req.ClientHWAddr}
 
@@ -111,7 +114,7 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 		if p.findAndPrepareResponse(ctx, req, res, req.RequestedIPAddress(), db) {
 			return nil
 		}
-		p.L.Debugf("failed to find address for %s", req.ClientHWAddr)
+		l.Debugf("failed to find address for %s", req.ClientHWAddr)
 
 		// Since we are the last plugin in the middleware chain we should do
 		// our best to find an IP address for that client. That means ingoring the
@@ -133,8 +136,7 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 	// and send a DHCPACK if we succeeded. In any error case
 	// we will NOT send a NAK as a middleware below us
 	// may succeed in leasing the address
-	// TODO(ppacher): we could check if the RequestedIPAddress() is inside
-	// the IP ranges and then decide to ACK or NAK
+
 	if dhcpserver.Request(req) {
 		state := "binding"
 		ip := req.RequestedIPAddress()
@@ -147,7 +149,15 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 		}
 
 		if ip != nil && !ip.IsUnspecified() {
-			p.L.Debugf("%s (%s) requests %s", req.ClientHWAddr, state, ip)
+			l.Debugf("%s (%s) requests %s", req.ClientHWAddr, state, ip)
+
+			if !p.Ranges.Contains(ip) {
+				l.Infof("Ignoring lease request for %s: requested IP not inside the configured ranges %s", ip, p.Ranges.String())
+				// fallthrough to the reset of the handler chain.
+				// If no-one is able to lease the requested IP the server will respond with
+				// DHCPNAK anyway.
+				return p.Next.ServeDHCP(ctx, req, res)
+			}
 
 			// use the leaseTime already set to the response packet
 			// else we fallback to time.Hour
@@ -159,7 +169,7 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 			leaseTime, err := db.Lease(ctx, ip, cli, activeLeaseTime, renewLeaseTime)
 
 			if err == nil {
-				p.L.Infof("%s (%s): lease %s for %s (activeLeaseTime: %s)", req.ClientHWAddr, state, ip, leaseTime, activeLeaseTime)
+				l.Infof("%s (%s): lease %s for %s (activeLeaseTime: %s)", req.ClientHWAddr, state, ip, leaseTime, activeLeaseTime)
 				if leaseTime == time.Hour {
 					res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
 				}
@@ -174,7 +184,7 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 				return nil
 			}
 
-			p.L.Errorf("%s: failed to lease requested ip %s: %s", req.ClientHWAddr, ip, err.Error())
+			l.Errorf("%s: failed to lease requested ip %s: %s", req.ClientHWAddr, ip, err.Error())
 			p.logAddressReservedError(ctx, err, db, ip, req)
 		}
 	} else
@@ -203,19 +213,21 @@ func (p *RangePlugin) maySetSubnetMask(req, res *dhcpv4.DHCPv4) {
 }
 
 func (p *RangePlugin) logAddressReservedError(ctx context.Context, err error, db lease.Database, ip net.IP, req *dhcpv4.DHCPv4) {
+	l := log.With(ctx, p.L)
 	if err != lease.ErrAddressReserved {
 		return
 	}
+
 	reservedAddresses, raErr := db.ReservedAddresses(ctx)
 	if raErr == nil {
 		entry := reservedAddresses.FindIP(ip)
 		if entry == nil {
-			p.L.Errorf("%s: Database.Lease failed but IP %s is not reserved", req.ClientHWAddr, ip)
+			l.Errorf("%s: Database.Lease failed but IP %s is not reserved", req.ClientHWAddr, ip)
 		} else {
-			p.L.Errorf("%s: IP %s is already reserved for %s and expires %s (expired=%v)", req.ClientHWAddr, ip, entry.Client, entry.Expires, entry.Expired(time.Now()))
+			l.Errorf("%s: IP %s is already reserved for %s and expires %s (expired=%v)", req.ClientHWAddr, ip, entry.Client, entry.Expires, entry.Expired(time.Now()))
 		}
 	} else {
-		p.L.Debugf("%s: failed to get list of reserved addresses: %s", req.ClientHWAddr, raErr)
+		l.Debugf("%s: failed to get list of reserved addresses: %s", req.ClientHWAddr, raErr)
 	}
 }
 
