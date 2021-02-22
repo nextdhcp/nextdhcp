@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -17,7 +16,7 @@ var (
 	rawListenPacket = func(iface *net.Interface) (net.PacketConn, error) {
 		// TODO(ppacher): use the BPF filter support to drop not-DHCP related
 		// packets
-		return raw.ListenPacket(iface, syscall.ETH_P_IP, nil)
+		return raw.ListenPacket(iface, 0x800, nil)
 	}
 
 	udpListenPacket = func(ip net.IP, port int) (net.PacketConn, error) {
