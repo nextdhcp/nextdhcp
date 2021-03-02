@@ -1,4 +1,11 @@
-10.100.0.150 - 10.100.0.155
-interface vboxnet1
-lease 2m
-log debug
+192.168.50.1 - 192.168.50.255
+{
+    static 08:00:27:78:fa:8b 192.168.50.4
+    option {
+        router 192.168.50.254  
+        nameserver 192.168.50.253
+        filename undionly.kpxe
+    }
+    next-server 192.168.50.252
+}
+
