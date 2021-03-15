@@ -1,8 +1,10 @@
 package option
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -29,11 +31,18 @@ func (p *Plugin) Name() string {
 func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	if dhcpserver.Discover(req) || dhcpserver.Request(req) {
 		for code, value := range p.Options {
+			fmt.Println("code:", code, "value:", value)
 			if req.IsOptionRequested(code) {
 				// TODO(ppacher): should we only set the option if no plugin above us already
 				// did it?
 				res.UpdateOption(dhcpv4.OptGeneric(code, value.ToBytes()))
 			}
+			archType := req.GetOneOption(dhcpv4.OptionClientSystemArchitectureType)
+			bootFileOption := dhcpv4.OptGeneric(dhcpv4.OptionBootfileName, []byte("ipxe.efi"))
+			if bytes.Equal(archType, []byte("0000")) {
+				bootFileOption = dhcpv4.OptGeneric(dhcpv4.OptionBootfileName, []byte("undionly.kpxe"))
+			}
+			res.UpdateOption(bootFileOption)
 		}
 	}
 
