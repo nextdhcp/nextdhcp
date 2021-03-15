@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -30,19 +29,22 @@ func (p *Plugin) Name() string {
 // if they are requested
 func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	if dhcpserver.Discover(req) || dhcpserver.Request(req) {
+		if dhcpserver.Discover(req) && req.IsOptionRequested(dhcpv4.OptionClientSystemArchitectureType) {
+			archType := req.GetOneOption(dhcpv4.OptionClientSystemArchitectureType)
+			uefiFile, _ := hex.DecodeString("ipxe.efi")
+			legacyFile, _ := hex.DecodeString("undionly.kpxe")
+			bootFileOption := dhcpv4.OptGeneric(dhcpv4.OptionBootfileName, uefiFile)
+			if bytes.Equal(archType, []byte("0000")) {
+				bootFileOption = dhcpv4.OptGeneric(dhcpv4.OptionBootfileName, legacyFile)
+			}
+			res.UpdateOption(bootFileOption)
+		}
 		for code, value := range p.Options {
-			fmt.Println("code:", code, "value:", value)
 			if req.IsOptionRequested(code) {
 				// TODO(ppacher): should we only set the option if no plugin above us already
 				// did it?
 				res.UpdateOption(dhcpv4.OptGeneric(code, value.ToBytes()))
 			}
-			archType := req.GetOneOption(dhcpv4.OptionClientSystemArchitectureType)
-			bootFileOption := dhcpv4.OptGeneric(dhcpv4.OptionBootfileName, []byte("ipxe.efi"))
-			if bytes.Equal(archType, []byte("0000")) {
-				bootFileOption = dhcpv4.OptGeneric(dhcpv4.OptionBootfileName, []byte("undionly.kpxe"))
-			}
-			res.UpdateOption(bootFileOption)
 		}
 	}
 
