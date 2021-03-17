@@ -13,6 +13,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/socket"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 // Server represents an instance of a server which
@@ -81,7 +82,7 @@ func (s *Server) Listen() (net.Listener, error) {
 // ListenPacket starts listening for DHCP request messages via UDP/Raw sockets
 // This implements the caddy.UDPServer interface
 func (s *Server) ListenPacket() (net.PacketConn, error) {
-	return socket.ListenDHCP(s.cfg.logger, s.cfg.IP, &s.cfg.Interface)
+	return socket.ListenDHCP(s.cfg.IP, &s.cfg.Interface)
 }
 
 // OnStartupComplete is called when all serves of the same instance have
@@ -184,7 +185,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 // updateConnectionAddresses tries to get the correct source and destination connection tuples (IP + MAC)
 // as defined by RCP
 func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, req, resp *dhcpv4.DHCPv4) net.Addr {
-	l := log.With(ctx, cfg.logger)
+	log.With(ctx)
 
 	// From RFC (https://tools.ietf.org/html/rfc2131):
 	//
@@ -213,7 +214,7 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, 
 			if req.ClientIPAddr != nil && !req.ClientIPAddr.IsUnspecified() {
 				if Offer(resp) || Ack(resp) {
 					a.RawAddr.IP = req.ClientIPAddr
-					l.Debugf("unicasting to ciaddr %s (%s)", req.ClientIPAddr, a.RawAddr.MAC)
+					logger.Log.Debugf("unicasting to ciaddr %s (%s)", req.ClientIPAddr, a.RawAddr.MAC)
 					return a
 				}
 			}
@@ -221,10 +222,10 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, 
 			if req.ClientIPAddr == nil || req.ClientIPAddr.IsUnspecified() {
 				if req.IsBroadcast() {
 					a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
-					l.Debugf("broadcasting to %s (%s) (broadcast bit set)", a.RawAddr.IP, a.RawAddr.MAC)
+					logger.Log.Debugf("broadcasting to %s (%s) (broadcast bit set)", a.RawAddr.IP, a.RawAddr.MAC)
 				} else {
 					a.RawAddr.IP = resp.YourIPAddr
-					l.Debugf("unicasting to yiaddr %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
+					logger.Log.Debugf("unicasting to yiaddr %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
 				}
 
 				return addr
@@ -232,13 +233,13 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, 
 
 			if Nak(resp) {
 				a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
-				l.Debugf("broadcasting to %s (%s) (NAK)", a.RawAddr.IP, a.RawAddr.MAC)
+				logger.Log.Debugf("broadcasting to %s (%s) (NAK)", a.RawAddr.IP, a.RawAddr.MAC)
 				return addr
 			}
 
-			l.Debugf("sending (unmodified) response to %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
+			logger.Log.Debugf("sending (unmodified) response to %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
 		} else {
-			l.Warnf("DHCP relay agents are not yet supported. giaddr=%s", req.GatewayIPAddr)
+			logger.Log.Warnf("DHCP relay agents are not yet supported. giaddr=%s", req.GatewayIPAddr)
 			return addr
 		}
 	}

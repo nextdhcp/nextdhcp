@@ -6,8 +6,8 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 // Plugin allows assignment of static IP addresses to clients
@@ -16,7 +16,6 @@ type Plugin struct {
 	Config    *dhcpserver.Config
 	Next      plugin.Handler
 	Addresses map[string]net.IP
-	L         log.Logger
 }
 
 // Name returns "static" and implements plugin.Handler
@@ -38,7 +37,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 			}
 
 			if reqIP.String() != static.String() {
-				s.L.Warnf("%s: denying request for IP %s", req.ClientHWAddr.String(), reqIP)
+				logger.Log.Warnf("%s: denying request for IP %s", req.ClientHWAddr.String(), reqIP)
 
 				res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
 				return nil
@@ -55,7 +54,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 			req.UpdateOption(dhcpv4.OptSubnetMask(s.Config.Network.Mask))
 		}
 
-		s.L.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
+		logger.Log.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
 		return nil
 	}
 
