@@ -2,7 +2,7 @@ package dhcpserver
 
 // Directives that we register at caddy
 var Directives = []string{
-	"log",
+	"logger",
 	"database",
 	"interface",
 	"gotify",
