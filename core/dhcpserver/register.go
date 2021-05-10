@@ -111,7 +111,7 @@ func (c *dhcpContext) InspectServerBlocks(sourceFile string, serverBlocks []cadd
 func (c *dhcpContext) MakeServers() ([]caddy.Server, error) {
 	for _, c := range c.configs {
 		if !findInterface(c) {
-			return nil, fmt.Errorf("failed to find interface for subnet %s", c.Network.String())
+			return nil, fmt.Errorf("failed to find interface for subnet %s", c.IP.String())
 		}
 
 		if err := ensureDatabase(c); err != nil {
