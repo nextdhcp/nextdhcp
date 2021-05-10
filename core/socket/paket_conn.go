@@ -8,8 +8,8 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/mdlayher/raw"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	interfaces "github.com/nextdhcp/nextdhcp/core/utils/iface"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 var (
@@ -29,7 +29,7 @@ var (
 
 // ListenDHCP starts listening for DHCP requests on the given IP and interface
 // It opens a UDP and a AF_PACKET socket for communication
-func ListenDHCP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, error) {
+func ListenDHCP(ip net.IP, iface *net.Interface) (net.PacketConn, error) {
 	// If not interface is provided try to lookup the correct one
 	if iface == nil {
 		var err error
@@ -54,7 +54,6 @@ func ListenDHCP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, 
 		raw:   r,
 		iface: iface,
 		ip:    ip,
-		l:     l,
 	}
 
 	p.wg.Add(1)
@@ -71,7 +70,6 @@ type DHCPConn struct {
 	iface *net.Interface // the interface the raw PacketConn is bound to
 	ip    net.IP         // the listening IP for the udp PacketConn
 	wg    sync.WaitGroup
-	l     log.Logger
 }
 
 // Close will close both the UDP and the AF_PACKET socket and
@@ -144,7 +142,7 @@ func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 			srcIP = r.Local.IP
 		}
 
-		p.l.Debugf("[socket] sending directed (raw) unicast %s (%s) -> %s (%s)", srcIP, srcMAC, r.IP, r.MAC)
+		logger.Log.Debugf("[socket] sending directed (raw) unicast %s (%s) -> %s (%s)", srcIP, srcMAC, r.IP, r.MAC)
 
 		// FIXME(ppacher): Ports are currenty hardcoded in PreparePacket
 		payload, err := PreparePacket(srcMAC, srcIP, r.MAC, r.IP, b)
@@ -157,7 +155,7 @@ func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		})
 	}
 
-	p.l.Debugf("[socket] sending (routed) UDP response %s -> %s", p.udp.LocalAddr(), addr)
+	logger.Log.Debugf("[socket] sending (routed) UDP response %s -> %s", p.udp.LocalAddr(), addr)
 	return p.udp.WriteTo(b, addr)
 }
 

@@ -8,10 +8,10 @@ import (
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/core/replacer"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 func init() {
@@ -23,7 +23,6 @@ func init() {
 
 func setupMqtt(c *caddy.Controller) error {
 	plg := &mqttPlugin{}
-	plg.l = log.GetLogger(c, plg)
 
 	for c.Next() {
 		cfg := &mqttConfig{}
@@ -78,8 +77,8 @@ func setupMqtt(c *caddy.Controller) error {
 				// to publish on MQTT. Is this really required? We could also just provide an "exec" plugin
 				// that calls an external binary/script and use that for publishing to MQTT.
 				//
-				plg.l.Warnf("payload-from: use of unofficial directive detected")
-				plg.l.Warnf("payload-from: this directive may vanish in future versions.")
+				logger.Log.Warnf("payload-from: use of unofficial directive detected")
+				logger.Log.Warnf("payload-from: this directive may vanish in future versions.")
 
 				cmd := c.RemainingArgs()
 				if len(cmd) == 0 {

@@ -6,7 +6,6 @@ import (
 
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -69,8 +68,6 @@ func makeStaticPlugin(c *caddy.Controller) (*Plugin, error) {
 		Addresses: addr,
 		Config:    dhcpserver.GetConfig(c),
 	}
-
-	plg.L = log.GetLogger(c, plg)
 
 	return plg, nil
 }

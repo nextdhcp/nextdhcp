@@ -7,5 +7,11 @@
         filename undionly.kpxe
     }
     next-server 192.168.50.252
+    log {
+       level debug
+       format json
+       output-file log.txt
+    }
 }
+metric /metrics
 

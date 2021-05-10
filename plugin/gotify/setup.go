@@ -6,10 +6,10 @@ import (
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/core/replacer"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 func init() {
@@ -35,7 +35,6 @@ func setupGotify(c *caddy.Controller) error {
 
 func makeGotifyPlugin(c *caddy.Controller) (*gotifyPlugin, error) {
 	g := &gotifyPlugin{}
-	g.l = log.GetLogger(c, g)
 
 	for c.Next() {
 		var (
@@ -58,7 +57,7 @@ func makeGotifyPlugin(c *caddy.Controller) (*gotifyPlugin, error) {
 				}
 				m := c.Val()
 				msg = func(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
-					g.l.Debugf("replacing message \"%s\"", m)
+					logger.Log.Debugf("replacing message \"%s\"", m)
 
 					rep := replacer.NewReplacer(ctx, req)
 					return rep.Replace(m), nil
@@ -70,7 +69,7 @@ func makeGotifyPlugin(c *caddy.Controller) (*gotifyPlugin, error) {
 
 				t := c.Val()
 				title = func(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
-					g.l.Debugf("replacing title \"%s\"", t)
+					logger.Log.Debugf("replacing title \"%s\"", t)
 					rep := replacer.NewReplacer(ctx, req)
 					return rep.Replace(t), nil
 				}

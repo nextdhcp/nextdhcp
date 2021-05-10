@@ -11,6 +11,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 type (
@@ -41,7 +42,6 @@ type (
 
 	mqttPlugin struct {
 		configs []*mqttConfig
-		l       log.Logger
 		next    plugin.Handler
 	}
 )
@@ -54,7 +54,7 @@ func (m *mqttPlugin) Name() string {
 // ServeDHCP forwards the DHCP request and sends any MQTT notifications configured.
 // It implements plugin.Handler
 func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dhcpv4.DHCPv4) error {
-	l := log.With(ctx, m.l)
+	log.With(ctx)
 	if err := m.next.ServeDHCP(ctx, req, resp); err != nil {
 		return err
 	}
@@ -63,35 +63,35 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 		go func(cfg *mqttConfig) {
 			match, err := cfg.Match(ctx, req)
 			if err != nil {
-				l.Errorf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
+				logger.Log.Errorf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
 				return
 			}
 
 			if match {
 				cli, qos, err := m.getClient(cfg)
 				if err != nil {
-					l.Errorf("failed to get MQTT connection for %q: %s", cfg.name, err.Error())
+					logger.Log.Errorf("failed to get MQTT connection for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				topic, err := cfg.topic(ctx, req, nil)
 				if err != nil {
-					l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
+					logger.Log.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				payload, err := cfg.payload(ctx, req, nil)
 				if err != nil {
-					l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
+					logger.Log.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				if token := cli.Publish(topic, byte(qos), false, payload); token.Wait() && token.Error() != nil {
-					l.Errorf("failed to publish MQTT message for %q: %s", cfg.name, token.Error())
+					logger.Log.Errorf("failed to publish MQTT message for %q: %s", cfg.name, token.Error())
 					return
 				}
 
-				l.Debugf("published MQTT message to topic %s", topic)
+				logger.Log.Debugf("published MQTT message to topic %s", topic)
 			}
 		}(cfg)
 	}
@@ -114,7 +114,7 @@ func (m *mqttPlugin) getClient(cfg *mqttConfig) (mqtt.Client, int, error) {
 	defer cfg.conn.l.Unlock()
 
 	if cfg.conn.c == nil {
-		if err := cfg.conn.open(m.l); err != nil {
+		if err := cfg.conn.open(); err != nil {
 			return nil, 0, err
 		}
 	}
@@ -122,7 +122,7 @@ func (m *mqttPlugin) getClient(cfg *mqttConfig) (mqtt.Client, int, error) {
 	return cfg.conn.c, cfg.conn.qos, nil
 }
 
-func (conn *mqttConnConfig) open(l log.Logger) error {
+func (conn *mqttConnConfig) open() error {
 	opts := mqtt.NewClientOptions()
 
 	for _, b := range conn.broker {
@@ -154,11 +154,11 @@ func (conn *mqttConnConfig) open(l log.Logger) error {
 		servers = append(servers, s.String())
 	}
 
-	l.Debugf("connecting to MQTT brokers at %s", strings.Join(servers, ", "))
+	logger.Log.Debugf("connecting to MQTT brokers at %s", strings.Join(servers, ", "))
 	if token := cli.Connect(); token.Wait() && token.Error() != nil {
 		return token.Error()
 	}
-	l.Infof("connected to MQTT brokers at %s", strings.Join(servers, ", "))
+	logger.Log.Infof("connected to MQTT brokers at %s", strings.Join(servers, ", "))
 
 	conn.c = cli
 

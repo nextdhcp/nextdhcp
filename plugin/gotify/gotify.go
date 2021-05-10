@@ -14,6 +14,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 type (
@@ -27,7 +28,6 @@ type (
 	gotifyPlugin struct {
 		next          plugin.Handler
 		notifications []*notification
-		l             log.Logger
 		wg            sync.WaitGroup // used in tests to wait until all notifications are sent
 	}
 
@@ -129,7 +129,7 @@ func (g *gotifyPlugin) Name() string {
 
 // ServeDHCP checks if we should send a notification for that DHCP message
 func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
-	l := log.With(ctx, g.l)
+	log.With(ctx)
 
 	// let the whole handler chain pass through
 	if err := g.next.ServeDHCP(ctx, req, res); err != nil {
@@ -144,17 +144,17 @@ func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) e
 
 			title, body, err := n.Prepare(ctx, req, res)
 			if err != nil {
-				l.Warnf("failed to pepare notification: %s", err.Error())
+				logger.Log.Warnf("failed to pepare notification: %s", err.Error())
 				return
 			}
 
 			if body != "" {
-				l.Debugf("sending notification: %s\n%s", title, body)
+				logger.Log.Debugf("sending notification: %s\n%s", title, body)
 
 				if err := n.Send(title, body); err != nil {
-					l.Warnf("failed to send notification: %s", err.Error())
+					logger.Log.Warnf("failed to send notification: %s", err.Error())
 				} else {
-					l.Debugf("notification sent via %s: %s\n%s", n.srv, title, body)
+					logger.Log.Debugf("notification sent via %s: %s\n%s", n.srv, title, body)
 				}
 			}
 		}(n)

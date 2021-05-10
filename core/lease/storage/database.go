@@ -6,22 +6,20 @@ import (
 	"net"
 	"time"
 
-	"github.com/apex/log"
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	dhcpLog "github.com/nextdhcp/nextdhcp/core/log"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 // Database implements lease.Database
 type Database struct {
 	store LeaseStorage
-	l     dhcpLog.Logger
 }
 
 // NewDatabase creates a new database that uses store for persistence
 func NewDatabase(store LeaseStorage) *Database {
 	return &Database{
 		store: store,
-		l:     log.Log,
 	}
 }
 
@@ -40,7 +38,7 @@ func (db *Database) Leases(ctx context.Context) ([]lease.Lease, error) {
 				return nil, err
 			}
 
-			db.l.Errorf("An error occured while loading IP lease for %s: %s", ip.String(), err.Error())
+			logger.Log.Errorf("An error occured while loading IP lease for %s: %s", ip.String(), err.Error())
 			continue
 		}
 
@@ -75,7 +73,7 @@ func (db *Database) ReservedAddresses(ctx context.Context) (lease.ReservedAddres
 				return nil, err
 			}
 
-			db.l.Errorf("An error occured while loading IP reservation for %s: %s", ip.String(), err.Error())
+			logger.Log.Errorf("An error occured while loading IP reservation for %s: %s", ip.String(), err.Error())
 			continue
 		}
 
@@ -97,13 +95,13 @@ func (db *Database) ReservedAddresses(ctx context.Context) (lease.ReservedAddres
 
 // Reserve implements lease.Database
 func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) error {
-	l := dhcpLog.With(ctx, db.l)
+	dhcpLog.With(ctx)
 
 	clientID := cli.HwAddr.String()
 
 	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
 	if err != nil && !IsNotFound(err) {
-		l.Debugf("failed to query IP storage for %s: %s", ip, err.Error())
+		logger.Log.Debugf("failed to query IP storage for %s: %s", ip, err.Error())
 		return err
 	}
 
@@ -111,7 +109,7 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 		if existingClient != clientID {
 			// IP address either leased or ŕeserved for a different client
 			if time.Now().Before(expiration) {
-				l.Debugf("address %s already reserved for %s", ip, existingClient)
+				logger.Log.Debugf("address %s already reserved for %s", ip, existingClient)
 				return lease.ErrAddressReserved
 			}
 		}
@@ -123,15 +121,15 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 		//
 		if time.Now().After(expiration) {
 			if !leased {
-				l.Debugf("updating expired reservation for %s", ip)
+				logger.Log.Debugf("updating expired reservation for %s", ip)
 				if err := db.store.Update(ctx, ip, clientID, false, time.Now().Add(time.Minute)); err != nil {
 					return err
 				}
 			} else {
-				l.Warnf("Reserving already leased IP address %s for client %s", ip.String(), cli.String())
+				logger.Log.Warnf("Reserving already leased IP address %s for client %s", ip.String(), cli.String())
 			}
 		} else {
-			l.Debugf("IP %s already reserved for %s", ip.String(), clientID)
+			logger.Log.Debugf("IP %s already reserved for %s", ip.String(), clientID)
 		}
 
 		return nil
@@ -142,13 +140,13 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 
 // Lease implementes lease.Database
 func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
-	l := dhcpLog.With(ctx, db.l)
+	dhcpLog.With(ctx)
 
 	clientID := cli.HwAddr.String()
 
 	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
 	if err != nil && !IsNotFound(err) {
-		l.Errorf("failed to query lease storage for %s: %s", ip.String(), err.Error())
+		logger.Log.Errorf("failed to query lease storage for %s: %s", ip.String(), err.Error())
 		return 0, err
 	}
 
@@ -170,10 +168,10 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			}
 
 			if update {
-				l.Debugf("updating existing lease for IP %s (expiration=%s new-expiration=%s)", ip.String(), expiration, newExpiration)
+				logger.Log.Debugf("updating existing lease for IP %s (expiration=%s new-expiration=%s)", ip.String(), expiration, newExpiration)
 				return activeLeaseTime, db.store.Update(ctx, ip, existingClient, true, newExpiration)
 			} else {
-				l.Debugf("using existing lease for P %s", ip.String())
+				logger.Log.Debugf("using existing lease for P %s", ip.String())
 			}
 
 			return activeLeaseTime, nil
@@ -182,12 +180,12 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 		// IP address already leased for a different client
 		// we must not overwrite it if it's still valid
 		if time.Now().Before(expiration) {
-			l.Debugf("IP %s already leased for client %s", ip.String(), existingClient)
+			logger.Log.Debugf("IP %s already leased for client %s", ip.String(), existingClient)
 			return 0, lease.ErrAddressReserved
 		}
 
 		// IP lease already expired so we can delete it
-		l.Infof("IP %s entry for client %s expired, overwritting (leased = %v)", ip, cli, leased)
+		logger.Log.Infof("IP %s entry for client %s expired, overwritting (leased = %v)", ip, cli, leased)
 		if err := db.store.Delete(ctx, ip, existingClient); err != nil {
 			return 0, err
 		}
@@ -196,10 +194,10 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 	}
 
 	if err := db.store.Create(ctx, ip, clientID, true, time.Now().Add(leaseTime)); err != nil {
-		l.Errorf("failed to lease IP %s for client %s: %s", ip.String(), clientID, err.Error())
+		logger.Log.Errorf("failed to lease IP %s for client %s: %s", ip.String(), clientID, err.Error())
 		return 0, err
 	}
-	l.Debugf("leased IP %s for client %s", ip.String(), clientID)
+	logger.Log.Debugf("leased IP %s for client %s", ip.String(), clientID)
 
 	return leaseTime, nil
 }

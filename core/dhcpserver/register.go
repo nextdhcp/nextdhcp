@@ -140,7 +140,7 @@ func findInterface(cfg *Config) bool {
 	if cfg.Interface.Name != "" && len(cfg.Interface.HardwareAddr) > 0 {
 		return true
 	}
-
+	fmt.Println("IP@@@@@@@@ ... ", cfg.IP)
 	iface, err := iface.ByIP(cfg.IP)
 	if err != nil {
 		return false

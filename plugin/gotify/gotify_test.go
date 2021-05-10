@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/apex/log"
 	"github.com/gotify/go-api-client/v2/client/message"
 	"github.com/gotify/go-api-client/v2/models"
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -167,7 +166,6 @@ func TestGotifyServeDHCP(t *testing.T) {
 				token:   "some-token-4",
 			},
 		},
-		l:    log.Log,
 		next: test.ErrorHandler,
 	}
 
