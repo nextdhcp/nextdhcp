@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -89,6 +90,7 @@ func (m *Metrics) start() error {
 		prometheus.MustRegister(requestCount)
 		prometheus.MustRegister(requestDuration)
 
+		http.Handle(m.path, promhttp.Handler())
 		go func() {
 			err := http.ListenAndServe(m.addr, m.handler)
 			if err != nil {
