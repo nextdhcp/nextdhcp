@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 )
@@ -68,4 +69,16 @@ func GetPeer(ctx context.Context) net.Addr {
 // WithPeer associates a peer addr with the ctx
 func WithPeer(ctx context.Context, peer net.Addr) context.Context {
 	return context.WithValue(ctx, PeerKey{}, peer)
+}
+
+// RequestTimestamp is the key used to associate request timestamp with a context.Context
+type RequestTimestamp struct{}
+
+func WithRequestTimeStamp(ctx context.Context) context.Context {
+	return context.WithValue(ctx, RequestTimestamp{}, time.Now())
+}
+
+func GetRequestTimeStamp(ctx context.Context) time.Time {
+	val := ctx.Value(RequestTimestamp{})
+	return val.(time.Time)
 }

@@ -10,6 +10,7 @@ import (
 	_ "github.com/nextdhcp/nextdhcp/plugin/mqtt"
 	_ "github.com/nextdhcp/nextdhcp/plugin/nextserver"
 	_ "github.com/nextdhcp/nextdhcp/plugin/option"
+	_ "github.com/nextdhcp/nextdhcp/plugin/prometheus"
 	_ "github.com/nextdhcp/nextdhcp/plugin/ranges"
 	_ "github.com/nextdhcp/nextdhcp/plugin/servername"
 	_ "github.com/nextdhcp/nextdhcp/plugin/static"

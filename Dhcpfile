@@ -13,5 +13,5 @@
        output-file log.txt
     }
 }
-metric /metrics
+prometheus localhost:9180
 
