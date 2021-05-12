@@ -89,7 +89,7 @@ func buildMiddlewareChain(cfg *Config) error {
 	var chain plugin.Handler = endOfChainHandler
 	for i := len(cfg.plugins) - 1; i >= 0; i-- {
 		chain = cfg.plugins[i](chain)
-		cfg.logger.Debugf("plugin (%d) %s setup", i, chain.Name())
+		logger.Log.Debugf("plugin (%d) %s setup", i, chain.Name())
 	}
 
 	cfg.chain = chain
