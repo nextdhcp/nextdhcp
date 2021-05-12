@@ -26,5 +26,5 @@ func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	requestCount.WithLabelValues(append([]string{requestType}, extraLabelValues...)...).Inc()
 	requestDuration.WithLabelValues(append([]string{requestType, responseType}, extraLabelValues...)...).Observe(float64(time.Since(requestTimeStamp).Seconds()))
 	logger.Log.Infoln("@@@@@@@@@@@@@@@@@@@ monitoring", requestType, responseType)
-	return nil
+	return p.Next.ServeDHCP(ctx, req, res)
 }
