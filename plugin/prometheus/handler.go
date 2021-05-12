@@ -2,11 +2,11 @@ package monitor
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 func (p *Plugin) Name() string {
@@ -25,6 +25,6 @@ func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	requestTimeStamp := dhcpserver.GetRequestTimeStamp(ctx)
 	requestCount.WithLabelValues(append([]string{requestType}, extraLabelValues...)...).Inc()
 	requestDuration.WithLabelValues(append([]string{requestType, responseType}, extraLabelValues...)...).Observe(float64(time.Since(requestTimeStamp).Seconds()))
-	fmt.Println("@@@@@@@@@@@@@@@@@@@ monitoring", requestType, responseType)
+	logger.Log.Infoln("@@@@@@@@@@@@@@@@@@@ monitoring", requestType, responseType)
 	return nil
 }
