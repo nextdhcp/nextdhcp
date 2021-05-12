@@ -1,4 +1,4 @@
-package monitor
+package prometheus
 
 import (
 	"net/http"
