@@ -27,7 +27,10 @@ func setupPrometheus(c *caddy.Controller) error {
 		return err
 	}
 
-	c.OnStartup(metrics.start)
+	err = metrics.start()
+	if err != nil {
+		return err
+	}
 
 	plg := &Plugin{Metrics: metrics}
 	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
