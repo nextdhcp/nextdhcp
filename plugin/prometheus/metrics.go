@@ -17,6 +17,7 @@ const (
 var (
 	requestCount    *prometheus.CounterVec
 	requestDuration *prometheus.HistogramVec
+	responseLatency *prometheus.HistogramVec
 	once            sync.Once
 )
 
@@ -72,15 +73,15 @@ func (m *Metrics) define() {
 	extraLabels := m.extraLabelNames()
 
 	requestCount = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "request_count_total",
+		Name: "dhcp_request_count_total",
 		Help: "Counter of DHCP(S) requests made.",
 	}, append([]string{"host", "request_type"}, extraLabels...))
 
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "request_duration_seconds",
+		Name:    "dhcp_request_duration_seconds",
 		Help:    "Histogram of the time (in seconds) each request took.",
 		Buckets: m.latencyBuckets,
-	}, append([]string{"host", "request_type", "responce_type"}, extraLabels...))
+	}, append([]string{"host", "request_type", "response_type"}, extraLabels...))
 }
 
 func (m *Metrics) start() error {
@@ -90,9 +91,9 @@ func (m *Metrics) start() error {
 		prometheus.MustRegister(requestCount)
 		prometheus.MustRegister(requestDuration)
 
-		http.Handle(m.path, promhttp.Handler())
+		http.Handle(m.path, promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, m.handler))
 		go func() {
-			err := http.ListenAndServe(m.addr, m.handler)
+			err := http.ListenAndServe(m.addr, nil)
 			if err != nil {
 				log.Printf("[ERROR] Starting handler: %v", err)
 			}
