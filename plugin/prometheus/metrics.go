@@ -84,22 +84,20 @@ func (m *Metrics) define() {
 }
 
 func (m *Metrics) start() error {
-	m.once.Do(func() {
-		m.define()
+	m.define()
 
-		prometheus.MustRegister(requestCount)
-		prometheus.MustRegister(requestDuration)
+	prometheus.MustRegister(requestCount)
+	prometheus.MustRegister(requestDuration)
 
-		// http.Handle(m.path, promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, m.handler))
-		http.Handle(m.path, promhttp.Handler())
-		go func() {
-			err := http.ListenAndServe(m.addr, nil)
-			if err != nil {
-				logger.Log.Errorf("[ERROR] Starting handler: %v", err)
-			}
-			logger.Log.Infof("listening at:%s, path: %s", m.addr, m.path)
-		}()
+	// http.Handle(m.path, promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, m.handler))
+	http.Handle(m.path, promhttp.Handler())
+	go func() {
+		err := http.ListenAndServe(m.addr, nil)
+		if err != nil {
+			logger.Log.Errorf("[ERROR] Starting handler: %v", err)
+		}
+		logger.Log.Infof("listening at:%s, path: %s", m.addr, m.path)
+	}()
 
-	})
 	return nil
 }

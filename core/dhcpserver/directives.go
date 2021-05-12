@@ -12,6 +12,6 @@ var Directives = []string{
 	"next-server",
 	"lease",
 	"static",
-	"prometheus",
 	"range",
+	"prometheus",
 }
