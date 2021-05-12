@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/caddyserver/caddy"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/plugin"
 	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
@@ -30,7 +31,13 @@ func setupPrometheus(c *caddy.Controller) error {
 	once.Do(func() {
 		c.OnStartup(metrics.start)
 	})
+	plg := &Plugin{Metrics: NewMetrics("", "")}
 	logger.Log.Info("Setup monitoring prometheus")
+
+	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+		plg.Next = next
+		return plg
+	})
 	return nil
 }
 
@@ -50,7 +57,7 @@ func parse(c *caddy.Controller) (*Metrics, error) {
 		}
 
 		args := c.RemainingArgs()
-		metrics = NewMetrics("", "")
+
 		switch len(args) {
 		case 0:
 		case 1:
