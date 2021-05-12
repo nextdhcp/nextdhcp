@@ -7,7 +7,6 @@ import (
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/plugin"
-	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 func init() {
@@ -32,8 +31,6 @@ func setupPrometheus(c *caddy.Controller) error {
 		c.OnStartup(metrics.start)
 	})
 	plg := &Plugin{Metrics: metrics}
-	logger.Log.Info("Setup monitoring prometheus")
-
 	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
 		plg.Next = next
 		return plg
