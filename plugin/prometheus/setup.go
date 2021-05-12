@@ -31,7 +31,7 @@ func setupPrometheus(c *caddy.Controller) error {
 	once.Do(func() {
 		c.OnStartup(metrics.start)
 	})
-	plg := &Plugin{Metrics: NewMetrics("", "")}
+	plg := &Plugin{Metrics: metrics}
 	logger.Log.Info("Setup monitoring prometheus")
 
 	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
@@ -57,7 +57,7 @@ func parse(c *caddy.Controller) (*Metrics, error) {
 		}
 
 		args := c.RemainingArgs()
-
+		metrics = NewMetrics("", "")
 		switch len(args) {
 		case 0:
 		case 1:
