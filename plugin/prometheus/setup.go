@@ -6,6 +6,7 @@ import (
 
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 func init() {
@@ -26,15 +27,10 @@ func setupPrometheus(c *caddy.Controller) error {
 		return err
 	}
 
-	// metrics.handler = promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
-	// 	ErrorHandling: promhttp.HTTPErrorOnError,
-	// 	ErrorLog:      log.New(os.Stderr, "", log.LstdFlags),
-	// })
-
 	once.Do(func() {
 		c.OnStartup(metrics.start)
 	})
-
+	logger.Log.Info("Setup monitoring prometheus")
 	return nil
 }
 

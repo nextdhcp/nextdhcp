@@ -1,10 +1,10 @@
 package monitor
 
 import (
-	"log"
 	"net/http"
 	"sync"
 
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -29,7 +29,7 @@ type Metrics struct {
 
 	once sync.Once
 
-	handler http.Handler
+	// handler http.Handler
 }
 
 type extraLabel struct {
@@ -95,8 +95,9 @@ func (m *Metrics) start() error {
 		go func() {
 			err := http.ListenAndServe(m.addr, nil)
 			if err != nil {
-				log.Printf("[ERROR] Starting handler: %v", err)
+				logger.Log.Errorf("[ERROR] Starting handler: %v", err)
 			}
+			logger.Log.Infof("listening at:%s, path: %s", m.addr, m.path)
 		}()
 
 	})
