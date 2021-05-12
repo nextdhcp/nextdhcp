@@ -1,15 +1,11 @@
 package monitor
 
 import (
-	"log"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/plugin"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func init() {
@@ -30,10 +26,10 @@ func setupPrometheus(c *caddy.Controller) error {
 		return err
 	}
 
-	metrics.handler = promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
-		ErrorHandling: promhttp.HTTPErrorOnError,
-		ErrorLog:      log.New(os.Stderr, "", log.LstdFlags),
-	})
+	// metrics.handler = promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+	// 	ErrorHandling: promhttp.HTTPErrorOnError,
+	// 	ErrorLog:      log.New(os.Stderr, "", log.LstdFlags),
+	// })
 
 	once.Do(func() {
 		c.OnStartup(metrics.start)

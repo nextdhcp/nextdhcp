@@ -22,7 +22,7 @@ func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 		extraLabelValues = append(extraLabelValues, label.value)
 	}
 	requestTimeStamp := dhcpserver.GetRequestTimeStamp(ctx)
-	requestCount.WithLabelValues(append(extraLabelValues, requestType)...).Inc()
+	requestCount.WithLabelValues(append([]string{requestType}, extraLabelValues...)...).Inc()
 	requestDuration.WithLabelValues(append([]string{requestType, responseType}, extraLabelValues...)...).Observe(float64(time.Since(requestTimeStamp).Seconds()))
 	return nil
 }

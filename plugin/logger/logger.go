@@ -31,7 +31,7 @@ var (
 )
 
 func initLog() {
-	Logger.SetLevel(logrus.InfoLevel)
+	Logger.SetLevel(logrus.DebugLevel)
 	Logger.SetFormatter(&logrus.TextFormatter{})
 	Logger.SetOutput(os.Stdout)
 }
