@@ -42,6 +42,9 @@ type Config struct {
 	// plugins is a list of middleware setup functions
 	plugins []plugin.Plugin
 
+	// last plugin has been set
+	lastPlugin bool
+
 	// chain is the beginning of the middleware chain for this subnet
 	chain plugin.Handler
 

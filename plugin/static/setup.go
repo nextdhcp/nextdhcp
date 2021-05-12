@@ -24,7 +24,6 @@ func setupStatic(c *caddy.Controller) error {
 
 	plg.Config.AddPlugin(func(next plugin.Handler) plugin.Handler {
 		plg.Next = next
-
 		return plg
 	})
 	return nil

@@ -145,17 +145,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 	// as per RFC2131
 	resp.UpdateOption(dhcpv4.OptServerIdentifier(cfg.IP))
 
-	switch msg.MessageType() {
-	case dhcpv4.MessageTypeDiscover:
-		resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer))
-	case dhcpv4.MessageTypeRequest:
-		// Response message type for Request (either ACK or NAK) should be set
-		// by plugins
-		fallthrough
-
-	default:
-		resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNone))
-	}
+	resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNone))
 
 	cfg.logger.Debugf("-> %s from %s (%s)", msg.MessageType(), addr, msg.HostName())
 
@@ -163,6 +153,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 	ctx = lease.WithDatabase(ctx, cfg.Database)
 	ctx = WithPeer(ctx, addr)
 	ctx = log.AddRequestFields(ctx, msg)
+	ctx = WithRequestTimeStamp(ctx)
 
 	err = cfg.chain.ServeDHCP(ctx, msg, resp)
 	if err != nil && err != ErrNoResponse {
