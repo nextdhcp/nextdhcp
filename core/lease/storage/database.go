@@ -172,9 +172,8 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			if update {
 				l.Debugf("updating existing lease for IP %s (expiration=%s new-expiration=%s)", ip.String(), expiration, newExpiration)
 				return activeLeaseTime, db.store.Update(ctx, ip, existingClient, true, newExpiration)
-			} else {
-				l.Debugf("using existing lease for P %s", ip.String())
 			}
+			l.Debugf("using existing lease for P %s", ip.String())
 
 			return activeLeaseTime, nil
 		}
