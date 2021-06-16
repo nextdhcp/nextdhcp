@@ -143,8 +143,5 @@ defines this option with a higher priority than the *tftp-server-name* (66) opti
 
 ### *filename*
 
-The filename that should be loaded during PXE / network boot. (Option 67)
+This option will be set automatically, dhcp will set boot file name according to client arch [client-arch](https://tools.ietf.org/html/rfc4578#section-2.1)
 
-```
-option filename pxe.0
-```

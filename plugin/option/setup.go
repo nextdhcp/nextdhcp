@@ -4,6 +4,7 @@ import (
 	"github.com/caddyserver/caddy"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -60,6 +61,6 @@ func setupOption(c *caddy.Controller) error {
 		plg.Next = next
 		return plg
 	})
-
+	plg.L = log.GetLogger(c, plg)
 	return nil
 }

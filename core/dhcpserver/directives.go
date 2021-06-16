@@ -10,6 +10,7 @@ var Directives = []string{
 	"option",
 	"servername",
 	"next-server",
+	"bootfile",
 	"lease",
 	"static",
 	"range",
