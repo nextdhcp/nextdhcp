@@ -27,6 +27,7 @@ func AddRequestFields(parent context.Context, req *dhcpv4.DHCPv4) context.Contex
 	return context.WithValue(parent, requestFieldsKey{}, fields)
 }
 
+// With add parent log fields to current log field
 func With(ctx context.Context, parent Logger) Logger {
 	l, ok := parent.(log.Interface)
 	if !ok {

@@ -12,3 +12,4 @@
 *.out
 nextdhcp
 dist
+build
