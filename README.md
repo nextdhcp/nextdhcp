@@ -75,6 +75,25 @@ Or, if you need to serve multiple subnets or multiple network interfaces you can
 }
 ```
 
+Enable monitoring 
+
+```
+10.0.0.10 - 10.0.0.20 {
+    lease 1d
+    prometheus {
+	    address localhost:9180
+        path /metrics
+    }
+}
+```
+Or 
+```
+10.0.0.10 - 10.0.0.20 {
+    lease 1d
+    prometheus localhost:9180
+}
+```
+
 Place your configuration into a file called `Dhcpfile` and  start NextDHCP as root:
 
 ```
@@ -96,7 +115,7 @@ For a list of supported plugins please checkout the content of the [*plugin*](./
 - [**static**](./plugin/static) - lease static IP addresses to clients based on their MAC address
 - [**gotify**](./plugin/gotify) - send push notifications for IP address leases and DHCP requests via gotify
 - [**mqtt**](./plugin/mqtt) - extract and publish DHCP request/response information to MQTT
-
+- [**prometheus**](./plugin/prometheus) - prometheus monitoring of request count and request time
 ## Versioning
 
 We use [SemVer](http://semver.org/) for versioning. For all versions available, see the [tags on this repository](https://github.com/nextdhcp/nextdhcp/tags) or checkout the [release page](https://github.com/nextdhcp/nextdhcp/releases).

@@ -41,10 +41,13 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 				s.L.Warnf("%s: denying request for IP %s", req.ClientHWAddr.String(), reqIP)
 
 				res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
-				return nil
+				return s.Next.ServeDHCP(ctx, req, res)
 			}
 
 			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
+		}
+		if dhcpserver.Discover(req) {
+			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer))
 		}
 
 		// TODO(ppacher): should we allow configuration of leaseTime or client specific options here?
@@ -56,7 +59,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 		}
 
 		s.L.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
-		return nil
+		return s.Next.ServeDHCP(ctx, req, res)
 	}
 
 	return s.Next.ServeDHCP(ctx, req, res)
