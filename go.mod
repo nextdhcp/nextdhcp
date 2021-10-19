@@ -15,7 +15,7 @@ require (
 	github.com/go-openapi/strfmt v0.19.4 // indirect
 	github.com/go-openapi/swag v0.19.6 // indirect
 	github.com/go-openapi/validate v0.19.5 // indirect
-	github.com/google/gopacket v1.1.17
+	github.com/google/gopacket v1.1.19
 	github.com/gotify/go-api-client/v2 v2.0.4
 	github.com/insomniacslk/dhcp v0.0.0-20200102182701-53297fb6d37d
 	github.com/mattn/go-colorable v0.1.4 // indirect
