@@ -19,7 +19,7 @@ require (
 	github.com/gotify/go-api-client/v2 v2.0.4
 	github.com/insomniacslk/dhcp v0.0.0-20200102182701-53297fb6d37d
 	github.com/mattn/go-colorable v0.1.4 // indirect
-	github.com/mattn/go-isatty v0.0.11
+	github.com/mattn/go-isatty v0.0.14
 	github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065
 	github.com/ppacher/glua-loop v0.0.0-20190823064734-05c43452ea18
 	github.com/ppacher/webthings-mqtt-gateway v0.0.0-20190827095024-c29a6f0aa947
