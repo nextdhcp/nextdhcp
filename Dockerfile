@@ -1,4 +1,4 @@
-FROM golang:1.16 AS go-builder
+FROM golang:1.18.0 AS go-builder
 
 COPY ./ /go/src/github.com/nextdhcp
 ENV GOPATH /go
