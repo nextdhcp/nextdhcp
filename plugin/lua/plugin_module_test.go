@@ -11,7 +11,11 @@ func getPluginTestVM(t *testing.T) (*lua.LState, *PluginManager) {
 	l := lua.NewState()
 
 	p := &PluginManager{}
-	p.Setup(l)
+	err := p.Setup(l)
+
+	if err != nil {
+		return nil, err
+	}
 
 	return l, p
 }

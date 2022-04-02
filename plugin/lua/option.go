@@ -151,15 +151,6 @@ func stringsToLua(l *lua.LState, x dhcpv4.OptionValue) (lua.LValue, error) {
 	return tbl, nil
 }
 
-func durationOption(s string) (dhcpv4.OptionValue, error) {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return nil, err
-	}
-
-	return dhcpv4.Duration(d), nil
-}
-
 var (
 	// TypeIP represents an IP type
 	TypeIP = &KnownType{StringFactory(ipOption), ipToLua}

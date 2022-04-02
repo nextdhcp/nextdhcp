@@ -36,7 +36,11 @@ func PreparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAdd
 		DstPort: 68,
 	}
 
-	udp.SetNetworkLayerForChecksum(ip)
+	err := udp.SetNetworkLayerForChecksum(ip)
+
+	if err != nil {
+		return nil, err
+	}
 
 	err := gopacket.SerializeLayers(buf, opts,
 		ethernet,

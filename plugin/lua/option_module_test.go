@@ -23,7 +23,11 @@ func getOptionTestVM(t *testing.T) (*lua.LState, *OptionModule) {
 	l := lua.NewState()
 
 	opts := getOptionModule(t)
-	opts.Setup(l)
+	err := opts.Setup(l)
+	
+	if err != nil {
+		return nil, err
+	}
 
 	return l, opts
 }

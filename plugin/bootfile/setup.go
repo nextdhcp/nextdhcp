@@ -36,14 +36,23 @@ func setupBootFile(c *caddy.Controller) error {
 			if len(values) == 0 {
 				return c.ArgErr()
 			}
-			p.parseBootFile(name, values)
+			err := p.parseBootFile(name, values)
+			
+			if err != nil {
+				return err
+			}
+
 			for c.NextBlock() {
 				name = c.Val()
 				values = c.RemainingArgs()
 				if len(values) == 0 {
 					return c.ArgErr()
 				}
-				p.parseBootFile(name, values)
+				err := p.parseBootFile(name, values)
+
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}

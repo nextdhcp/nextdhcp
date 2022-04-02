@@ -25,10 +25,12 @@ func TestDatabaseSetup(t *testing.T) {
 	var retErr error
 	var argsOpts map[string][]string
 
-	storage.Register(driverName, func(opts map[string][]string) (storage.LeaseStorage, error) {
+	err := storage.Register(driverName, func(opts map[string][]string) (storage.LeaseStorage, error) {
 		argsOpts = opts
 		return ret, retErr
 	})
+
+	assert.Noerror(t, err)
 
 	t.Run("no args", func(t *testing.T) {
 		c := test.CreateTestBed(t, "database test-driver")

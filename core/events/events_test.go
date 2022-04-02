@@ -19,7 +19,11 @@ var (
 func init() {
 	caddy.RegisterEventHook("event-testing-hook", func(name caddy.EventName, info interface{}) error {
 		eventHooks.Range(func(_, value interface{}) bool {
-			value.(caddy.EventHook)(name, info)
+			err := value.(caddy.EventHook)(name, info)
+
+			if err != nil {
+				return err
+			}
 			return false
 		})
 
