@@ -70,7 +70,7 @@ func TestNotificationPrepare(t *testing.T) {
 	errorMacher, err := matcher.SetupMatcherString("'string'")
 	require.NoError(t, err)
 	n.Matcher = errorMacher
-	nt, nm, err = n.Prepare(ctx, req, res)
+	_, _, err = n.Prepare(ctx, req, res)
 	assert.Error(t, err)
 
 	n.Matcher = emptyMatcher

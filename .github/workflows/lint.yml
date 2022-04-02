@@ -1,8 +1,9 @@
 name: Lint Test
 on:
   push:
+    branches:
+      - master
   pull_request:
-  workflow_dispatch:
 
 jobs:
   lint:
@@ -15,4 +16,4 @@ jobs:
         uses: golangci/golangci-lint-action@v3.1.0
         with:
           version: latest
-          args: --timeout 5m
+          args: "--out-${NO_FUTURE}format colored-line-number --timeout 5m"

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net"
 	"reflect"
-	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/yuin/gluamapper"
@@ -151,15 +150,6 @@ func stringsToLua(l *lua.LState, x dhcpv4.OptionValue) (lua.LValue, error) {
 	return tbl, nil
 }
 
-func durationOption(s string) (dhcpv4.OptionValue, error) {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return nil, err
-	}
-
-	return dhcpv4.Duration(d), nil
-}
-
 var (
 	// TypeIP represents an IP type
 	TypeIP = &KnownType{StringFactory(ipOption), ipToLua}
@@ -249,7 +239,8 @@ var optionTypes = map[dhcpv4.OptionCode]*KnownType{
 func GetBuiltinOptionTypes() map[dhcpv4.OptionCode]*KnownType {
 	m := make(map[dhcpv4.OptionCode]*KnownType)
 	for key, value := range optionTypes {
-		m[key] = &(*value)
+		currValue := *value
+		m[key] = &currValue
 	}
 
 	return m

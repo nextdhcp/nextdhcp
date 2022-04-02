@@ -36,9 +36,13 @@ func PreparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAdd
 		DstPort: 68,
 	}
 
-	udp.SetNetworkLayerForChecksum(ip)
+	err := udp.SetNetworkLayerForChecksum(ip)
 
-	err := gopacket.SerializeLayers(buf, opts,
+	if err != nil {
+		return nil, err
+	}
+
+	err = gopacket.SerializeLayers(buf, opts,
 		ethernet,
 		ip,
 		udp,
@@ -58,6 +62,9 @@ func extractUDPPayloads(targetPort int, b []byte) ([]byte, net.Addr, bool) {
 	}
 
 	phy, ok := packet.LinkLayer().(*layers.Ethernet)
+	if !ok {
+		return nil, nil, false
+	}
 
 	ipLayer, ok := packet.NetworkLayer().(*layers.IPv4)
 	if !ok {

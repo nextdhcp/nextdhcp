@@ -113,9 +113,7 @@ func (p *DHCPConn) ReadFrom(b []byte) (int, net.Addr, error) {
 				}
 
 				// copy over the payload
-				for i, x := range payload {
-					b[i] = x
-				}
+				copy(payload, b)
 
 				return len(payload), addr, err
 			}

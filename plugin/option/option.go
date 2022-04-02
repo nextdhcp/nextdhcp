@@ -72,9 +72,7 @@ func parseCustomOption(name string, values []string) (dhcpv4.OptionCode, dhcpv4.
 
 	var payloads [][]byte
 	for _, v := range values {
-		if strings.HasPrefix(v, "0x") {
-			v = strings.TrimPrefix(v, "0x")
-		}
+		v = strings.TrimPrefix(v, "0x")
 
 		b, err := hex.DecodeString(v)
 		if err != nil {
