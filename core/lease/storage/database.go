@@ -157,7 +157,7 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			// address leased for this client
 			// update lease time if requested or expired
 			newExpiration := expiration
-			activeLeaseTime := expiration.Sub(time.Now())
+			activeLeaseTime := time.Until(expiration)
 			update := false
 			if renew || time.Now().After(expiration) {
 				newExpiration = time.Now().Add(leaseTime)

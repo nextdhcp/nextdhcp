@@ -42,7 +42,7 @@ func PreparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAdd
 		return nil, err
 	}
 
-	err := gopacket.SerializeLayers(buf, opts,
+	err = gopacket.SerializeLayers(buf, opts,
 		ethernet,
 		ip,
 		udp,

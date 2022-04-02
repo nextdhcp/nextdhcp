@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net"
 	"reflect"
-	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/yuin/gluamapper"
