@@ -239,7 +239,7 @@ var optionTypes = map[dhcpv4.OptionCode]*KnownType{
 func GetBuiltinOptionTypes() map[dhcpv4.OptionCode]*KnownType {
 	m := make(map[dhcpv4.OptionCode]*KnownType)
 	for key, value := range optionTypes {
-		currValue = *value
+		currValue := *value
 		m[key] = &currValue
 	}
 
