@@ -62,6 +62,9 @@ func extractUDPPayloads(targetPort int, b []byte) ([]byte, net.Addr, bool) {
 	}
 
 	phy, ok := packet.LinkLayer().(*layers.Ethernet)
+	if !ok {
+		return nil, nil, false
+	}
 
 	ipLayer, ok := packet.NetworkLayer().(*layers.IPv4)
 	if !ok {
