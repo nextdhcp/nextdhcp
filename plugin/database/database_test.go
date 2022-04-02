@@ -30,7 +30,7 @@ func TestDatabaseSetup(t *testing.T) {
 		return ret, retErr
 	})
 
-	assert.Noerror(t, err)
+	assert.NoError(t, err)
 
 	t.Run("no args", func(t *testing.T) {
 		c := test.CreateTestBed(t, "database test-driver")

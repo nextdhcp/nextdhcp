@@ -13,10 +13,7 @@ func getTestVM(t *testing.T) (*lua.LState, *SubnetManager) {
 
 	m := &SubnetManager{}
 	err := m.Setup(l)
-	
-	if err != nil {
-		return nil, err
-	}
+	assert.NoError(t, err)
 
 	return l, m
 }

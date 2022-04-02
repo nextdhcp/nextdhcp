@@ -22,7 +22,7 @@ func init() {
 			err := value.(caddy.EventHook)(name, info)
 
 			if err != nil {
-				return err
+				return false
 			}
 			return false
 		})
