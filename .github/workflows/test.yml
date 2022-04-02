@@ -35,8 +35,7 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Test
-        run: go test -v .
-
+        run: go test -v ./...
 
       - name: Coverage
-        run: go test -v -cover .
+        run: go test -v -cover ./...
