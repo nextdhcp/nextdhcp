@@ -1,8 +1,9 @@
 name: Lint Test
 on:
   push:
+    branches:
+      - master
   pull_request:
-  workflow_dispatch:
 
 jobs:
   lint:
