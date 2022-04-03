@@ -6,7 +6,7 @@ require (
 	github.com/Knetic/govaluate v3.0.0+incompatible
 	github.com/apex/log v1.9.0
 	github.com/caddyserver/caddy v1.0.5
-	github.com/eclipse/paho.mqtt.golang v1.2.0
+	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/fatih/color v1.8.0 // indirect
 	github.com/go-openapi/analysis v0.19.7 // indirect
 	github.com/go-openapi/errors v0.19.3 // indirect
@@ -30,6 +30,5 @@ require (
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	go.etcd.io/bbolt v1.3.6
 	go.mongodb.org/mongo-driver v1.2.0 // indirect
-	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
 	gopkg.in/yaml.v2 v2.2.7 // indirect
 )
