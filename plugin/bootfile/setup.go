@@ -6,7 +6,6 @@ import (
 
 	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -22,7 +21,6 @@ func init() {
 type Plugin struct {
 	Next     plugin.Handler
 	Bootfile map[BootMode]string
-	L        log.Logger
 }
 
 func setupBootFile(c *caddy.Controller) error {
@@ -61,7 +59,6 @@ func setupBootFile(c *caddy.Controller) error {
 		p.Next = next
 		return p
 	})
-	p.L = log.GetLogger(c, p)
 	return nil
 }
 

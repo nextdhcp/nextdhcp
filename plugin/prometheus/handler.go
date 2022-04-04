@@ -26,6 +26,6 @@ func (p *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	requestTimeStamp := dhcpserver.GetRequestTimeStamp(ctx)
 	requestCount.WithLabelValues(append([]string{requestType}, extraLabelValues...)...).Inc()
 	requestDuration.WithLabelValues(append([]string{requestType, responseType}, extraLabelValues...)...).Observe(float64(time.Since(requestTimeStamp).Seconds()))
-	logger.Log.Infoln("Ç monitoring", requestType, responseType)
+	logger.Log.Infoln("Prometheus monitoring request_type: %s, response_type: %s", requestType, responseType)
 	return nil
 }

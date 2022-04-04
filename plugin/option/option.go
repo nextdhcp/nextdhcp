@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nextdhcp/nextdhcp/core/log"
-
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/option"
@@ -19,7 +17,6 @@ import (
 type Plugin struct {
 	Next    plugin.Handler
 	Options map[dhcpv4.OptionCode]dhcpv4.OptionValue
-	L       log.Logger
 }
 
 // Name implements the plugin.Handler interface and returns "option"

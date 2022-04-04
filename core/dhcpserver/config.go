@@ -43,7 +43,7 @@ type Config struct {
 	plugins []plugin.Plugin
 
 	// last plugin has been set
-	lastPlugin bool
+	// lastPlugin bool
 
 	// chain is the beginning of the middleware chain for this subnet
 	chain plugin.Handler
