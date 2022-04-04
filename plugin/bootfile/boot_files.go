@@ -7,6 +7,7 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/nextdhcp/nextdhcp/core/option"
+	"github.com/nextdhcp/nextdhcp/plugin/logger"
 )
 
 /*** Client Arch type
@@ -76,7 +77,7 @@ func (p *Plugin) parseBootFileName(req *dhcpv4.DHCPv4) string {
 		bootFile = p.Bootfile[UEFI]
 	}
 
-	p.L.Debugf("receive client request with client_archs option: %s, dhcp server set boot-file-name as %s",
+	logger.Log.Infof("receive client request with client_archs option: %s, dhcp server set boot-file-name as %s",
 		archs.String(), bootFile)
 	return bootFile
 }
