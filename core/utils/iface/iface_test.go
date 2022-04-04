@@ -48,6 +48,6 @@ func TestByNameOrCIDR(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", ip.String())
 	assert.Equal(t, "127.0.0.0/8", inet.String())
 
-	ip, inet, err = ByNameOrCIDR("notAnIpOrInterface")
+	_, _, err = ByNameOrCIDR("notAnIpOrInterface")
 	require.Error(t, err)
 }

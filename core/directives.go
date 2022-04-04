@@ -2,6 +2,7 @@ package core
 
 import (
 	// Include all built-in directives
+	_ "github.com/nextdhcp/nextdhcp/plugin/bootfile"
 	_ "github.com/nextdhcp/nextdhcp/plugin/database"
 	_ "github.com/nextdhcp/nextdhcp/plugin/gotify"
 	_ "github.com/nextdhcp/nextdhcp/plugin/ifname"

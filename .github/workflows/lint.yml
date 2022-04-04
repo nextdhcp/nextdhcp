@@ -1,0 +1,19 @@
+name: Lint Test
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3.1.0
+        with:
+          version: latest
+          args: "--out-${NO_FUTURE}format colored-line-number --timeout 5m"
