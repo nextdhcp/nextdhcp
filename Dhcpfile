@@ -1,0 +1,4 @@
+10.100.0.150 - 10.100.0.155
+interface eth0
+lease 2m
+log debug

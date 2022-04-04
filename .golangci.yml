@@ -8,5 +8,3 @@ linters:
     - unused
     - structcheck
     - varcheck
-    # Disable govet from running during lint.
-    - govet
