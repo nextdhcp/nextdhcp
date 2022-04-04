@@ -42,7 +42,7 @@ func (p *Plugin) GetBootFileOpt(ctx context.Context, req, res *dhcpv4.DHCPv4) (*
 func parseBootFileName(req *dhcpv4.DHCPv4) string {
 	archs := iana.Archs(req.ClientArch())
 
-	rex := regexp.MustCompile("(^EFI \S+$)")
+	rex := regexp.MustCompile(`(^EFI \S+$)`)
 	bootFile := legacyBootFile
 	if rex.MatchString(archs.String()) {
 		bootFile = efiBootFile
