@@ -25,7 +25,7 @@ jobs:
           go-version: ${{ env.GO_MOD_VERSION}}
 
       - name: Set up Cache
-        uses: actions/cache@v3.0.1
+        uses: actions/cache@v3.0.2
         with:
           path: |
             ~/go/pkg/mod
