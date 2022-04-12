@@ -1,15 +1,18 @@
-FROM golang:1.16 AS go-builder
+# Build Stage
+FROM golang:1.16
 
-COPY ./ /go/src/github.com/nextdhcp
 ENV GOPATH /go
 ENV GOBIN /go/bin
 WORKDIR /go/src/github.com/nextdhcp
+
+COPY . .
 RUN make build
 
-FROM busybox:glibc 
+# Release Stage
+FROM busybox:glibc
 
 WORKDIR /app
-COPY --from=go-builder /go/src/github.com/nextdhcp/build/nextdhcp /app/nextdhcp
+COPY --from=0 /go/src/github.com/nextdhcp/build/nextdhcp /app/nextdhcp
 COPY ./Dhcpfile /app/
 
-ENTRYPOINT [ "/app/nextdhcp" ]
+ENTRYPOINT ["/app/nextdhcp"]
