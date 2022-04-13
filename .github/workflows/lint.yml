@@ -1,9 +1,11 @@
-name: Lint Test
+name: Go Lint
 on:
   push:
     branches:
       - master
   pull_request:
+    branches:
+      - master
 
 jobs:
   lint:
@@ -13,7 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v3.1.0
+        uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-          args: "--out-${NO_FUTURE}format colored-line-number --timeout 5m"
+          args: "--out-${NO_FUTURE}format colored-line-number --timeout 5m --config .golangci.yml"
