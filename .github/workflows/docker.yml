@@ -3,10 +3,10 @@ name: Docker Release
 on:
   push:
     branches:
-      - 'master'
+      - master
   pull_request:
     branches:
-      - 'master'
+      - master
   workflow_dispatch:
   release:
     types: [published, edited]
