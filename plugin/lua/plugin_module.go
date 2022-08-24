@@ -36,10 +36,7 @@ func (mng *PluginManager) Plugins() []PluginConfig {
 	mng.rwl.RLock()
 	defer mng.rwl.RUnlock()
 
-	plugins := make([]PluginConfig, len(mng.plugins))
-	for i, p := range mng.plugins {
-		plugins[i] = p
-	}
+	copy(plugins, mng.plugins)
 
 	return plugins
 }

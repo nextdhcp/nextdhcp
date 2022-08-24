@@ -1,4 +1,4 @@
-name: Go Lint
+name: Go Lint Test
 on:
   push:
     branches:

@@ -63,9 +63,7 @@ func (mng *SubnetManager) Subnets() []Subnet {
 	subnets := make([]Subnet, len(mng.subnets))
 
 	// TODO(ppacher) deep copy subnets (ie. copy IP and IPNet byte slices)
-	for i, s := range mng.subnets {
-		subnets[i] = s
-	}
+	copy(subnets, mng.subnets)
 
 	return subnets
 }
