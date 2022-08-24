@@ -101,7 +101,7 @@ func (r *replacer) Set(key string, val Value) {
 // ipStr converts ip to it's string representation. If ip is nil or 0 bytes long
 // an empty string is returned
 func ipStr(ip net.IP) string {
-	if ip == nil || len(ip) == 0 {
+	if len(ip) == 0 {
 		return ""
 	}
 

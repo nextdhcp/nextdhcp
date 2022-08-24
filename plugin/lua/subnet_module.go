@@ -60,12 +60,9 @@ func (mng *SubnetManager) Subnets() []Subnet {
 	mng.rwl.RLock()
 	defer mng.rwl.RUnlock()
 
-	subnets := make([]Subnet, len(mng.subnets))
-
 	// TODO(ppacher) deep copy subnets (ie. copy IP and IPNet byte slices)
-	for i, s := range mng.subnets {
-		subnets[i] = s
-	}
+	subnets := make([]Subnet, len(mng.subnets))
+	copy(subnets, mng.subnets)
 
 	return subnets
 }
