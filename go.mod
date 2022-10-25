@@ -6,7 +6,7 @@ require (
 	github.com/Knetic/govaluate v3.0.0+incompatible
 	github.com/apex/log v1.9.0
 	github.com/caddyserver/caddy v1.0.5
-	github.com/eclipse/paho.mqtt.golang v1.4.1
+	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/fatih/color v1.8.0 // indirect
 	github.com/go-openapi/analysis v0.19.7 // indirect
 	github.com/go-openapi/errors v0.19.3 // indirect
