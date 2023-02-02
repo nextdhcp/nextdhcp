@@ -120,15 +120,15 @@ func (r *IPRange) Validate() error {
 	end4, endOk := IP2Int(r.End)
 
 	if !startOk {
-		return errors.New("Invalid start IP")
+		return errors.New("invalid start IP")
 	}
 
 	if !endOk {
-		return errors.New("Invalid end IP")
+		return errors.New("invalid end IP")
 	}
 
 	if start4 >= end4 {
-		return errors.New("Invalid range")
+		return errors.New("invalid range")
 	}
 
 	return nil

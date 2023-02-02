@@ -2,7 +2,6 @@ package bolt
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -13,7 +12,7 @@ import (
 
 func TestMemoryStorage(t *testing.T) {
 	factory := func(ctx context.Context) storage.LeaseStorage {
-		file, err := ioutil.TempFile("", "storage-*.db")
+		file, err := os.CreateTemp("", "storage-*.db")
 		if err != nil {
 			panic(err.Error())
 		}

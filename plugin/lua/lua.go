@@ -3,7 +3,6 @@ package lua
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 
 	"github.com/ppacher/glua-loop/pkg/eventloop"
@@ -22,7 +21,7 @@ type Runner struct {
 // NewFromReader creates and returns a new lua runner from the given input
 // reader
 func NewFromReader(input io.Reader) (*Runner, error) {
-	content, err := ioutil.ReadAll(input)
+	content, err := io.ReadAll(input)
 	if err != nil {
 		return nil, err
 	}

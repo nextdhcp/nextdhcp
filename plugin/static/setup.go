@@ -54,7 +54,7 @@ func makeStaticPlugin(c *caddy.Controller) (*Plugin, error) {
 		}
 
 		if e, ok := addr[key]; ok {
-			return nil, fmt.Errorf("Static IP address %s has already been configured for client %s", e.String(), key)
+			return nil, fmt.Errorf("static IP address %s has already been configured for client %s", e.String(), key)
 		}
 
 		if _, ok := ips[ip.String()]; ok {
