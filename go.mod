@@ -28,7 +28,7 @@ require (
 	github.com/u-root/u-root v6.0.0+incompatible // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
-	go.etcd.io/bbolt v1.3.6
+	go.etcd.io/bbolt v1.3.7
 	go.mongodb.org/mongo-driver v1.2.0 // indirect
 	gopkg.in/yaml.v2 v2.2.7 // indirect
 )
