@@ -8,33 +8,36 @@ on:
       - master
 
 jobs:
-  build:
+  tests:
     name: Build
-    runs-on: ubuntu-latest
+    strategy:
+        matrix:
+            go-version:
+                - 1.18.x
+                - 1.19.x
+                - 1.20.x
+            platform:
+                - ubuntu-latest
+    runs-on: '${{ matrix.platform }}'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      -   name: Install Go
+          uses: actions/setup-go@v3
+          with:
+              go-version: ${{ matrix.go-version }}
 
-      - name: Set Vars
-        run: |
-          echo "SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "GO_MOD_VERSION=$(grep -P "go \d+\." go.mod | cut -d " " -f2)" >> $GITHUB_ENV
-
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          check-latest: true
-          go-version: ${{ env.GO_MOD_VERSION}}
-
-      - name: Set up Cache
+      - name: Setup Golang cache
         uses: actions/cache@v3
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+            path: |
+                ~/go/pkg/mod
+                ~/.cache/go-build
+                ~/Library/Caches/go-build
+                ~\AppData\Local\go-build
+            key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+            restore-keys: |
+                ${{ runner.os }}-go-${{ matrix.go-version }}-
+      -   name: Fetch Repository
+          uses: actions/checkout@v3
 
       - name: Test
         run: go test -race -v ./...
