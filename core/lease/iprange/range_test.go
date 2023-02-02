@@ -333,17 +333,17 @@ func TestIPRange_Validate(t *testing.T) {
 
 	r.Start = nil
 	require.Error(t, r.Validate())
-	assert.Equal(t, "Invalid start IP", r.Validate().Error())
+	assert.Equal(t, "invalid start IP", r.Validate().Error())
 
 	r.Start = net.IP{10, 8, 0, 10}
 	r.End = nil
 	require.Error(t, r.Validate())
-	assert.Equal(t, "Invalid end IP", r.Validate().Error())
+	assert.Equal(t, "invalid end IP", r.Validate().Error())
 
 	r.End = net.IP{10, 8, 0, 1}
 	r.Start = net.IP{10, 8, 0, 10}
 	require.Error(t, r.Validate())
-	assert.Equal(t, "Invalid range", r.Validate().Error())
+	assert.Equal(t, "invalid range", r.Validate().Error())
 }
 
 func TestIPRanges(t *testing.T) {

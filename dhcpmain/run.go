@@ -2,7 +2,6 @@ package dhcpmain
 
 import (
 	"flag"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -54,7 +53,7 @@ func configLoader(serverType string) (caddy.Input, error) {
 		return caddy.CaddyfileFromPipe(os.Stdin, serverType)
 	}
 
-	file, err := ioutil.ReadFile(conf)
+	file, err := os.ReadFile(conf)
 	if err != nil {
 		return nil, err
 	}

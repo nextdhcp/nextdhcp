@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/mdlayher/raw"
+	"github.com/mdlayher/raw" //nolint:staticcheck // SA1019 ignore this!
 	"github.com/nextdhcp/nextdhcp/core/log"
 	interfaces "github.com/nextdhcp/nextdhcp/core/utils/iface"
 )

@@ -3,7 +3,6 @@ package bolt
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -14,7 +13,7 @@ import (
 )
 
 func copyFile(srcFile string) (*os.File, error) {
-	file, err := ioutil.TempFile("", "storage-*.db")
+	file, err := os.CreateTemp("", "storage-*.db")
 	if err != nil {
 		return nil, err
 	}
