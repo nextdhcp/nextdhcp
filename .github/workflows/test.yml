@@ -20,24 +20,13 @@ jobs:
                 - ubuntu-latest
     runs-on: '${{ matrix.platform }}'
     steps:
+      -   name: Fetch Repository
+          uses: actions/checkout@v3
+
       -   name: Install Go
           uses: actions/setup-go@v4
           with:
-              go-version: ${{ matrix.go-version }}
-
-      - name: Setup Golang cache
-        uses: actions/cache@v3
-        with:
-            path: |
-                ~/go/pkg/mod
-                ~/.cache/go-build
-                ~/Library/Caches/go-build
-                ~\AppData\Local\go-build
-            key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
-            restore-keys: |
-                ${{ runner.os }}-go-${{ matrix.go-version }}-
-      -   name: Fetch Repository
-          uses: actions/checkout@v3
+              go-version: '${{ matrix.go-version }}'
 
       - name: Test
         run: go test -race -v ./...
