@@ -24,17 +24,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           check-latest: true
-          go-version: ${{ env.GO_MOD_VERSION}}
-
-      - name: Set up Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          go-version: '${{ env.GO_MOD_VERSION}}'
 
       - name: Build
         run: go build -v ./...
