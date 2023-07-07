@@ -6,7 +6,7 @@ require (
 	github.com/Knetic/govaluate v3.0.0+incompatible
 	github.com/apex/log v1.9.0
 	github.com/caddyserver/caddy v1.0.5
-	github.com/eclipse/paho.mqtt.golang v1.4.2
+	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/google/gopacket v1.1.19
 	github.com/gotify/go-api-client/v2 v2.0.4
 	github.com/insomniacslk/dhcp v0.0.0-20221215072855-de60144f33f8
@@ -63,7 +63,7 @@ require (
 	go.mongodb.org/mongo-driver v1.11.1 // indirect
 	go.opentelemetry.io/otel v1.12.0 // indirect
 	go.opentelemetry.io/otel/trace v1.12.0 // indirect
-	golang.org/x/net v0.7.0 // indirect
+	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	google.golang.org/protobuf v1.26.0-rc.1 // indirect
