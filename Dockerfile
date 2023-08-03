@@ -1,5 +1,5 @@
 # Build Stage
-FROM golang:1.20.6
+FROM golang:1.20.7
 
 ENV GOPATH /go
 ENV GOBIN /go/bin
