@@ -17,7 +17,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7
 	github.com/yuin/gopher-lua v1.1.1
-	go.etcd.io/bbolt v1.3.8
+	go.etcd.io/bbolt v1.3.9
 )
 
 require (
@@ -64,7 +64,7 @@ require (
 	go.opentelemetry.io/otel v1.12.0 // indirect
 	go.opentelemetry.io/otel/trace v1.12.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	google.golang.org/protobuf v1.26.0-rc.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
