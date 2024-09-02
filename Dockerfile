@@ -1,5 +1,5 @@
 # Build Stage
-FROM golang:1.22.5
+FROM golang:1.23-bookworm
 
 ENV GOPATH /go
 ENV GOBIN /go/bin

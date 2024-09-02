@@ -23,7 +23,7 @@ func parseDatabaseDirective(c *caddy.Controller) error {
 	}
 	driverName := c.Val()
 
-	var options = make(map[string][]string)
+	options := make(map[string][]string)
 	remaining := c.RemainingArgs()
 	if len(remaining) > 0 {
 		options["__args__"] = remaining

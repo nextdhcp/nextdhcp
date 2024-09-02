@@ -205,7 +205,6 @@ func Merge(ranges []*IPRange) []*IPRange {
 		// push onto stack if we are not overlapping with stack top
 		if topEnd < curStart {
 			stack = append(stack, ranges[i].Clone())
-
 		} else if topEnd < curEnd {
 			// otherwise update the ending time if we have a "bigger" end IP
 			top.End = append(net.IP{}, ranges[i].End...)

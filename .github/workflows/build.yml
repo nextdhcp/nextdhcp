@@ -15,16 +15,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set Vars
-        run: |
-          echo "SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "GO_MOD_VERSION=$(grep -P "go \d+\." go.mod | cut -d " " -f2)" >> $GITHUB_ENV
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           check-latest: true
-          go-version: '${{ env.GO_MOD_VERSION}}'
+          go-version: '1.22.x'
 
       - name: Build
         run: go build -v ./...

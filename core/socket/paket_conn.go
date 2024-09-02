@@ -192,7 +192,6 @@ func (p *DHCPConn) discardUDP() {
 
 	for {
 		_, _, err := p.udp.ReadFrom(buf)
-
 		if err != nil {
 			if opErr, ok := err.(*net.OpError); ok {
 				if opErr.Timeout() || opErr.Temporary() {

@@ -1,6 +1,6 @@
 module github.com/nextdhcp/nextdhcp
 
-go 1.18
+go 1.22
 
 require (
 	github.com/Knetic/govaluate v3.0.0+incompatible

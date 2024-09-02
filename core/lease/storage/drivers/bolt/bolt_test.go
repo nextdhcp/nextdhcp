@@ -17,7 +17,7 @@ func TestMemoryStorage(t *testing.T) {
 			panic(err.Error())
 		}
 
-		db, err := bbolt.Open(file.Name(), 0600, &bbolt.Options{
+		db, err := bbolt.Open(file.Name(), 0o600, &bbolt.Options{
 			OpenFile: func(_ string, _ int, _ os.FileMode) (*os.File, error) {
 				return file, nil
 			},
