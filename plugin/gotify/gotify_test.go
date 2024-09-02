@@ -107,7 +107,6 @@ func TestNotificatonSend(t *testing.T) {
 
 	assert.Equal(t, returnErr, n.Send("title", "message"))
 	assert.True(t, called)
-
 }
 
 func TestGotifyServeDHCP(t *testing.T) {
@@ -128,7 +127,7 @@ func TestGotifyServeDHCP(t *testing.T) {
 
 	g := &gotifyPlugin{
 		notifications: []*notification{
-			&notification{
+			{
 				Matcher: emptyMatcher,
 				msg: func(_ context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
 					return "message1", nil
@@ -139,7 +138,7 @@ func TestGotifyServeDHCP(t *testing.T) {
 				srv:   "http://gotify1.com",
 				token: "some-token-1",
 			},
-			&notification{
+			{
 				Matcher: alwaysFalse,
 				msg: func(_ context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
 					return "message2", nil
@@ -150,7 +149,7 @@ func TestGotifyServeDHCP(t *testing.T) {
 				srv:   "http://gotify2.com",
 				token: "some-token-2",
 			},
-			&notification{
+			{
 				Matcher: errorMacher,
 				msg: func(_ context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
 					return "message3", nil
@@ -161,7 +160,7 @@ func TestGotifyServeDHCP(t *testing.T) {
 				srv:   "http://gotify3.com",
 				token: "some-token-3",
 			},
-			&notification{
+			{
 				Matcher: emptyMatcher,
 				srv:     "http://gotify4.com",
 				token:   "some-token-4",

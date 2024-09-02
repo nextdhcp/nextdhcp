@@ -37,7 +37,6 @@ func PreparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAdd
 	}
 
 	err := udp.SetNetworkLayerForChecksum(ip)
-
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +46,6 @@ func PreparePacket(srcMAC net.HardwareAddr, srcIP net.IP, dstMAC net.HardwareAdd
 		ip,
 		udp,
 		gopacket.Payload(payload))
-
 	if err != nil {
 		return nil, err
 	}

@@ -16,7 +16,7 @@ func prepareOptionTable(L *lua.LState, tbl *lua.LTable, rcv map[dhcpv4.OptionCod
 		v := L.Get(3)
 
 		if t == nil {
-			L.ArgError(1, "wtf? We should get a table in __newindex")
+			L.ArgError(1, "We should get a table in __newindex")
 			return 0
 		}
 

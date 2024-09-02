@@ -1,21 +1,40 @@
-name: Go Lint Test
+# Adapted from https://github.com/golangci/golangci-lint-action/blob/b56f6f529003f1c81d4d759be6bd5f10bf9a0fa0/README.md#how-to-use
+
+name: golangci-lint
 on:
   push:
     branches:
       - master
+      - main
+    paths-ignore:
+      - "**/*.md"
   pull_request:
-    branches:
-      - master
+    paths-ignore:
+      - "**/*.md"
+
+permissions:
+  # Required: allow read access to the content for analysis.
+  contents: read
+  # Optional: allow read access to pull request. Use with `only-new-issues` option.
+  pull-requests: read
+  # Optional: Allow write access to checks to allow the action to annotate code in the PR.
+  checks: write
 
 jobs:
-  lint:
-    name: Lint Test
+  golangci:
+    name: lint
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Run golangci-lint
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # NOTE: Keep this in sync with the version from go.mod
+          go-version: "1.22.x"
+          cache: false
+
+      - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
-          args: "--out-${NO_FUTURE}format colored-line-number --timeout 5m --config .golangci.yml"
+          # NOTE: Keep this in sync with the version from .golangci.yml
+          version: v1.60.3

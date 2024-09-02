@@ -11,8 +11,8 @@ import (
 // govaluate.NewEvaluableExpression() and similar
 func ParseConditions(c *caddy.Controller) (string, error) {
 	var conds []string
-	var op = "&&"
-	var disp = c.Dispenser // get a copy of the dispenser so we don't actually
+	op := "&&"
+	disp := c.Dispenser // get a copy of the dispenser so we don't actually
 
 	for disp.NextBlock() {
 		switch disp.Val() {

@@ -1,36 +1,30 @@
-name: Go Test
+name: Test
+
 on:
   push:
     branches:
       - master
+      - main
+    paths-ignore:
+      - "**/*.md"
   pull_request:
-    branches:
-      - master
+    paths-ignore:
+      - "**/*.md"
 
 jobs:
-  tests:
-    name: Build
+  unit:
     strategy:
-        fail-fast: false
-        matrix:
-            go-version:
-                - 1.20.x
-                - 1.21.x
-                - 1.22.x
-            platform:
-                - ubuntu-latest
-    runs-on: '${{ matrix.platform }}'
+      matrix:
+        go-version: [1.22.x, 1.23.x]
+    runs-on: 'ubuntu-latest'
     steps:
-      -   name: Fetch Repository
-          uses: actions/checkout@v4
+      - name: Fetch Repository
+        uses: actions/checkout@v4
 
-      -   name: Install Go
-          uses: actions/setup-go@v5
-          with:
-              go-version: '${{ matrix.go-version }}'
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
 
       - name: Test
-        run: go test -race -v ./...
-
-      - name: Coverage
-        run: go test -v -cover ./...
+        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on

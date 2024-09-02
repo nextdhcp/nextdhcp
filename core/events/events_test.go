@@ -12,15 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	eventHooks = &sync.Map{}
-)
+var eventHooks = &sync.Map{}
 
 func init() {
 	caddy.RegisterEventHook("event-testing-hook", func(name caddy.EventName, info interface{}) error {
 		eventHooks.Range(func(_, value interface{}) bool {
 			err := value.(caddy.EventHook)(name, info)
-
 			if err != nil {
 				return false
 			}

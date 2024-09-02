@@ -8,12 +8,10 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 )
 
-var (
-	// ErrNoResponse is returned by plugins if no response should be sent to the client
-	// This may be used for DHCPRELEASE messages or by middleware handlers that filtered
-	// the request. It's not an actual error
-	ErrNoResponse = errors.New("no response should be sent")
-)
+// ErrNoResponse is returned by plugins if no response should be sent to the client
+// This may be used for DHCPRELEASE messages or by middleware handlers that filtered
+// the request. It's not an actual error
+var ErrNoResponse = errors.New("no response should be sent")
 
 // Request checks if msg is a DHCPREQUEST
 func Request(msg *dhcpv4.DHCPv4) bool {

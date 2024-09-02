@@ -22,12 +22,10 @@ type (
 	LeaseEventHook func(event caddy.EventName, l *lease.Lease) error
 )
 
-var (
-	validLeaseEvents = map[caddy.EventName]struct{}{
-		EventLeaseCreated: {},
-		EventLeaseExpired: {},
-	}
-)
+var validLeaseEvents = map[caddy.EventName]struct{}{
+	EventLeaseCreated: {},
+	EventLeaseExpired: {},
+}
 
 // EmitLeaseEvent emits a lease-based event
 func EmitLeaseEvent(event caddy.EventName, l *lease.Lease) {

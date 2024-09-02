@@ -33,7 +33,6 @@ func Test_OptionModule(t *testing.T) {
 	opts := getOptionModule(t)
 
 	t.Run("declaring options", func(t *testing.T) {
-
 		t.Run("should work if new", func(t *testing.T) {
 			assert.NoError(t, opts.DeclareOption("arch", 0x98, "TYPE_STRING"))
 			assert.NotNil(t, opts.nameToCode["arch"])
@@ -49,7 +48,6 @@ func Test_OptionModule(t *testing.T) {
 		t.Run("should fail if name is used", func(t *testing.T) {
 			assert.Error(t, opts.DeclareOption("arch", 0xaa, "TYPE_IP"))
 			assert.Equal(t, TypeString, opts.codeToType[opts.nameToCode["arch"]])
-
 		})
 
 		t.Run("should fail for unknown types", func(t *testing.T) {

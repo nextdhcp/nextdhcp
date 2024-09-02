@@ -1,11 +1,12 @@
 package log
 
 import (
+	"os"
+
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
 	"github.com/caddyserver/caddy"
 	"github.com/mattn/go-isatty"
-	"os"
 )
 
 func init() {

@@ -37,7 +37,6 @@ func setupBootFile(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			err := p.parseBootFile(name, values)
-
 			if err != nil {
 				return err
 			}
@@ -49,7 +48,6 @@ func setupBootFile(c *caddy.Controller) error {
 					return c.ArgErr()
 				}
 				err := p.parseBootFile(name, values)
-
 				if err != nil {
 					return err
 				}

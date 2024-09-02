@@ -42,7 +42,7 @@ func TestMigrateDb(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	db, err := bbolt.Open("testdata/leases.db", 0600, &bbolt.Options{
+	db, err := bbolt.Open("testdata/leases.db", 0o600, &bbolt.Options{
 		OpenFile: func(_ string, _ int, _ os.FileMode) (*os.File, error) {
 			return f, nil
 		},

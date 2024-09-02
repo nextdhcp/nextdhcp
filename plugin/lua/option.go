@@ -32,9 +32,7 @@ type KnownType struct {
 	FromValue ToLuaFunc
 }
 
-var (
-	float64Type = reflect.TypeOf(float64(1))
-)
+var float64Type = reflect.TypeOf(float64(1))
 
 // FromLuaValue converts the value to it's DHCP option representation. Note that value is automatically
 // converted to the go-type expected by the configured KnownType factory function. An error is returned

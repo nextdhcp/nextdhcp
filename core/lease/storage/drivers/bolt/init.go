@@ -26,7 +26,7 @@ func storageFactory(arguments map[string][]string) (storage.LeaseStorage, error)
 		return nil, fmt.Errorf("no database file configured")
 	}
 
-	db, err := bbolt.Open(file, 0660, nil)
+	db, err := bbolt.Open(file, 0o660, nil)
 	if err != nil {
 		return nil, err
 	}

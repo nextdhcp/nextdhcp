@@ -45,16 +45,14 @@ type (
 	notifyFunc func(srv *url.URL, token string, msg *message.CreateMessageParams) error
 )
 
-var (
-	// notification function that actually sends the notification via gotify
-	// defined as a variable so it can be mocked in unit tests
-	notify notifyFunc = func(gotifyURL *url.URL, token string, msg *message.CreateMessageParams) error {
-		cli := gotify.NewClient(gotifyURL, &http.Client{})
+// notification function that actually sends the notification via gotify
+// defined as a variable so it can be mocked in unit tests
+var notify notifyFunc = func(gotifyURL *url.URL, token string, msg *message.CreateMessageParams) error {
+	cli := gotify.NewClient(gotifyURL, &http.Client{})
 
-		_, err := cli.Message.CreateMessage(msg, auth.TokenAuth(token))
-		return err
-	}
-)
+	_, err := cli.Message.CreateMessage(msg, auth.TokenAuth(token))
+	return err
+}
 
 // Prepare checks if we should send a notification for the given request and returns
 // the message body. An empty message body indicates that no notification should be

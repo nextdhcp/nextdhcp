@@ -48,9 +48,9 @@ func TestDatabaseSetup(t *testing.T) {
 		assert.NotNil(t, argsOpts)
 
 		expected := map[string][]string{
-			"__args__": []string{"some", "arguments"},
-			"barg1":    []string{"1"},
-			"barg2":    []string{"2", "3"},
+			"__args__": {"some", "arguments"},
+			"barg1":    {"1"},
+			"barg2":    {"2", "3"},
 		}
 		assert.Equal(t, expected, argsOpts)
 	})
