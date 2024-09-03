@@ -106,15 +106,11 @@ func (p *DHCPConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		if n > 0 {
 			payload, addr, ok := extractUDPPayloads(dhcpv4.ServerPort, buf[:n])
 			if ok {
-				// TODO(ppacher): the following check does not adhere to
-				// the expected ReadFrom behavior. Fix it
-				if cap(b) < len(payload) {
-					return 0, nil, fmt.Errorf("buffer size to small")
+				if len(b) < len(payload) {
+					return 0, nil, fmt.Errorf("buffer size too small")
 				}
 
-				// copy over the payload
-				copy(payload, b)
-
+				copy(b, payload)
 				return len(payload), addr, err
 			}
 		}
