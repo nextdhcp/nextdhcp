@@ -14,7 +14,7 @@ require (
 	github.com/mdlayher/raw v0.1.0
 	github.com/ppacher/glua-loop v0.0.0-20190823064734-05c43452ea18
 	github.com/ppacher/webthings-mqtt-gateway v0.0.0-20190827095024-c29a6f0aa947
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7
 	github.com/yuin/gopher-lua v1.1.1
 	go.etcd.io/bbolt v1.3.11
