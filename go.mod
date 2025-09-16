@@ -1,12 +1,12 @@
 module github.com/nextdhcp/nextdhcp
 
-go 1.23.0
+go 1.24.0
 
 require (
 	github.com/Knetic/govaluate v3.0.0+incompatible
 	github.com/apex/log v1.9.0
 	github.com/caddyserver/caddy v1.0.5
-	github.com/eclipse/paho.mqtt.golang v1.5.0
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/google/gopacket v1.1.19
 	github.com/gotify/go-api-client/v2 v2.0.4
 	github.com/insomniacslk/dhcp v0.0.0-20240829085014-a3a4c1f04475
@@ -65,9 +65,9 @@ require (
 	go.opentelemetry.io/otel v1.29.0 // indirect
 	go.opentelemetry.io/otel/metric v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
