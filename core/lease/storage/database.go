@@ -219,7 +219,7 @@ func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease
 		return ErrClientMismatch
 	}
 
-	if !leased {
+	if leased {
 		return errors.New("reservation not found")
 	}
 

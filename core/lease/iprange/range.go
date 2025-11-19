@@ -32,7 +32,7 @@ func (r *IPRange) Len() int {
 		return 0
 	}
 
-	return int(end4) - int(start4)
+	return int(end4) - int(start4) + 1
 }
 
 func (r *IPRange) String() string {
