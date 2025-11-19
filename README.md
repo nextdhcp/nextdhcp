@@ -18,8 +18,8 @@ The following instructions will get you a local copy of the project for developm
 
 ### Prerequisites
 
-In order to install, hack and test NextDHCP you need a working [Go](https://golang.org) environment. Since this project already adapted go modules you should use at least version 1.12. For testing it is also recommended to have
-at least one virtual machine available. 
+In order to install, hack and test NextDHCP you need a working [Go](https://golang.org) environment. Since this project already adapted go modules you should use Go 1.25 or newer. For testing it is also recommended to have
+at least one virtual machine available.
 
 ### Installing
 
