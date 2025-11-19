@@ -38,7 +38,7 @@ func prepareOptionTable(L *lua.LState, tbl *lua.LTable, rcv map[dhcpv4.OptionCod
 
 		value, err := fn.FromLuaValue(L, v)
 		if err != nil {
-			L.RaiseError(err.Error())
+			L.RaiseError("%s", err.Error())
 			return 0
 		}
 

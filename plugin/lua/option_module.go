@@ -11,8 +11,8 @@ import (
 
 // optionCode implements dhcpv3.OptionCode
 type optionCode struct {
-	code    uint8
 	luaName string
+	code    uint8
 }
 
 func (c *optionCode) Code() uint8 {
@@ -29,9 +29,9 @@ var _ dhcpv4.OptionCode = &optionCode{}
 // OptionModule keeps track of well-known and user-defined DHCPv4 options and
 // how to covert them between their DHCPv4 wire and lua representation.
 type OptionModule struct {
-	l          sync.RWMutex
 	nameToCode map[string]dhcpv4.OptionCode     // access protected by l
 	codeToType map[dhcpv4.OptionCode]*KnownType // access protected by l
+	l          sync.RWMutex
 }
 
 // NewOptionModule creates a new option module with support for the named DHCP options configured
@@ -59,7 +59,7 @@ func (opts *OptionModule) DeclareOption(name string, code uint8, typeName string
 		return errors.New("unsupport type")
 	}
 
-	opt := &optionCode{code, name}
+	opt := &optionCode{name, code}
 
 	opts.codeToType[opt] = knownType
 	opts.nameToCode[name] = opt
@@ -115,7 +115,7 @@ func (opts *OptionModule) luaDeclareOption(L *lua.LState) int {
 	}
 
 	if err := opts.DeclareOption(string(name), uint8(b), string(typeName)); err != nil {
-		L.RaiseError(err.Error())
+		L.RaiseError("%s", err.Error())
 		return 0
 	}
 

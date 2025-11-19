@@ -9,20 +9,19 @@ import (
 
 // PluginConfig describes the configuration of a loadable plugin
 type PluginConfig struct {
+	// Config holds additional configuration values for the plugin
+	Config map[string]interface{}
 	// Name is the name of the plugin
 	Name string
 
 	// Path holds the file path to the plugins .so file
 	Path string
-
-	// Config holds additional configuration values for the plugin
-	Config map[string]interface{}
 }
 
 // PluginManager allows configuration of loadable
 type PluginManager struct {
-	rwl     sync.RWMutex
 	plugins []PluginConfig
+	rwl     sync.RWMutex
 }
 
 // Setup initializes the given lua.LState by configuring global plugin related functions

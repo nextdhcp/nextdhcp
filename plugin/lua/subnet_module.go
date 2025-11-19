@@ -10,42 +10,41 @@ import (
 
 // SubnetConfig holds the configuration for a subnet
 type SubnetConfig struct {
-	// Database is the lease database to use. Defaults to internal
-	Database string `mapstructure:"database"`
-
 	// DatabaseOptions may holds additional database options passed to lease.Open()
 	DatabaseOptions map[string]interface{} `mapstructure:"databaseArgs"`
-
-	// Ranges of IP address that can be leased to clients on this subnet
-	Ranges [][]string `mapstructure:"ranges"`
 
 	// Options holds additional DHCP options for clients on this subnet
 	Options map[string]interface{} `mapstructure:"options"`
 
-	// LeaseTime is the default lease time for new IP address leases
-	LeaseTime string `mapstructure:"leaseTime"` // TODO(ppacher) use DecodeHook and make time.Duration?
-
 	// Offer is a callback function to modify a lease offer before it is sent
 	// to a client
 	Offer *lua.LFunction `mapstructure:"offer"`
+	// Database is the lease database to use. Defaults to internal
+	Database string `mapstructure:"database"`
+
+	// LeaseTime is the default lease time for new IP address leases
+	LeaseTime string `mapstructure:"leaseTime"` // TODO(ppacher) use DecodeHook and make time.Duration?
+
+	// Ranges of IP address that can be leased to clients on this subnet
+	Ranges [][]string `mapstructure:"ranges"`
 }
 
 // Subnet defines a subnet to be served
 type Subnet struct {
-	// IP is the IP address to listen on
-	IP net.IP
+	// SubnetConfig embedds additional configuration values
+	SubnetConfig
 
 	// Network is the IP network that is served by this declaration
 	Network net.IPNet
 
-	// SubnetConfig embedds additional configuration values
-	SubnetConfig
+	// IP is the IP address to listen on
+	IP net.IP
 }
 
 // SubnetManager allows subnets to be declared via lua code
 type SubnetManager struct {
-	rwl     sync.RWMutex
 	subnets []Subnet
+	rwl     sync.RWMutex
 }
 
 // Setup configures the provided lua VM and exposes subnet related configuration
@@ -76,7 +75,7 @@ func (mng *SubnetManager) declareSubnet(L *lua.LState) int {
 
 	ip, ipNet, err := net.ParseCIDR(str)
 	if err != nil {
-		L.RaiseError(err.Error())
+		L.RaiseError("%s", err.Error())
 		return 0
 	}
 
@@ -95,7 +94,7 @@ func (mng *SubnetManager) configureSubnet(ip net.IP, network net.IPNet) lua.LGFu
 
 		var cfg SubnetConfig
 		if err := gluamapper.Map(tbl, &cfg); err != nil {
-			L.RaiseError(err.Error())
+			L.RaiseError("%s", err.Error())
 			return 0
 		}
 
