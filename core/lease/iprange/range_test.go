@@ -18,21 +18,21 @@ func Test_IPRange_Len(t *testing.T) {
 				Start: net.ParseIP("10.0.0.0"),
 				End:   net.ParseIP("10.0.0.0"),
 			},
-			0,
+			1,
 		},
 		{
 			IPRange{
 				Start: net.ParseIP("10.0.0.0"),
 				End:   net.ParseIP("10.0.0.100"),
 			},
-			100,
+			101,
 		},
 		{
 			IPRange{
 				Start: net.ParseIP("10.0.0.0"),
 				End:   net.ParseIP("10.0.1.100"),
 			},
-			356,
+			357,
 		},
 		// invalid ranges
 		{
@@ -284,6 +284,26 @@ func Test_deleteRange(t *testing.T) {
 				{
 					Start: net.IP{10, 8, 0, 10},
 					End:   net.IP{10, 8, 0, 19},
+				},
+			},
+		},
+
+		// #4 ensure trailing single IPs are retained
+		{
+			I: []*IPRange{
+				{
+					Start: net.ParseIP("10.8.0.10").To4(),
+					End:   net.ParseIP("10.8.0.11").To4(),
+				},
+			},
+			D: &IPRange{
+				Start: net.ParseIP("10.8.0.10").To4(),
+				End:   net.ParseIP("10.8.0.10").To4(),
+			},
+			E: []*IPRange{
+				{
+					Start: net.ParseIP("10.8.0.11").To4(),
+					End:   net.ParseIP("10.8.0.11").To4(),
 				},
 			},
 		},
