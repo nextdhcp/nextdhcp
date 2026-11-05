@@ -15,7 +15,7 @@ jobs:
   unit:
     strategy:
       matrix:
-        go-version: [1.25.x]
+        go-version: [1.26.x, 1.27.x]
     runs-on: 'ubuntu-latest'
     steps:
       - name: Fetch Repository
