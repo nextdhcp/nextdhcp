@@ -17,7 +17,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7
 	github.com/yuin/gopher-lua v1.1.2
-	go.etcd.io/bbolt v1.4.3
+	go.etcd.io/bbolt v1.5.0
 )
 
 require (
