@@ -1,37 +1,49 @@
 package log
 
 import (
-	"os"
+	"errors"
+	"strings"
 
-	"github.com/apex/log"
-	"github.com/apex/log/handlers/cli"
-	"github.com/caddyserver/caddy"
-	"github.com/mattn/go-isatty"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 )
 
 func init() {
-	caddy.RegisterPlugin("log", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     setupLogging,
-	})
+	dhcpserver.RegisterDirective("log", setupLogging)
 }
 
-func setupLogging(c *caddy.Controller) error {
+// levels maps the log levels the log directive accepts to Caddy's log
+// levels.
+var levels = map[string]string{
+	"debug":   "DEBUG",
+	"info":    "INFO",
+	"warn":    "WARN",
+	"warning": "WARN",
+	"error":   "ERROR",
+	"fatal":   "FATAL",
+}
+
+var errInvalidLevel = errors.New("invalid level")
+
+func parseLevel(s string) (string, error) {
+	l, ok := levels[strings.ToLower(s)]
+	if !ok {
+		return "", errInvalidLevel
+	}
+
+	return l, nil
+}
+
+func setupLogging(c dhcpserver.Helper) error {
 	c.Next()
 
 	if !c.NextArg() {
 		return c.ArgErr()
 	}
 
-	l, err := log.ParseLevel(c.Val())
+	l, err := parseLevel(c.Val())
 	if err != nil {
 		return c.SyntaxErr(err.Error())
-	}
-
-	log.SetLevel(l)
-
-	if isatty.IsTerminal(os.Stdout.Fd()) {
-		log.SetHandler(cli.New(os.Stdout))
 	}
 
 	// TODO(ppacher): maybe we should allow log configuration like
@@ -42,5 +54,29 @@ func setupLogging(c *caddy.Controller) error {
 		return c.SyntaxErr("invalid token or multiple \"log\" configurations")
 	}
 
+	// The level applies to all logs, like the log level of NextDHCP did
+	// before it used Caddy's logging
+	defaultLog(c.Config).Level = l
+
 	return nil
+}
+
+// defaultLog returns the configuration of Caddy's default log in cfg, which
+// it adds if cfg doesn't have it yet.
+func defaultLog(cfg *caddy.Config) *caddy.CustomLog {
+	if cfg.Logging == nil {
+		cfg.Logging = new(caddy.Logging)
+	}
+
+	if cfg.Logging.Logs == nil {
+		cfg.Logging.Logs = make(map[string]*caddy.CustomLog)
+	}
+
+	l, ok := cfg.Logging.Logs[caddy.DefaultLoggerName]
+	if !ok {
+		l = new(caddy.CustomLog)
+		cfg.Logging.Logs[caddy.DefaultLoggerName] = l
+	}
+
+	return l
 }

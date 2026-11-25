@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/apex/log"
 	"github.com/gotify/go-api-client/v2/client/message"
 	"github.com/gotify/go-api-client/v2/models"
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -15,6 +14,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestNotificationPrepare(t *testing.T) {
@@ -166,7 +166,7 @@ func TestGotifyServeDHCP(t *testing.T) {
 				token:   "some-token-4",
 			},
 		},
-		l:    log.Log,
+		l:    zap.NewNop().Sugar(),
 		next: test.ErrorHandler,
 	}
 

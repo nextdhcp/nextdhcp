@@ -1,76 +1,125 @@
 package static
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
 func init() {
-	caddy.RegisterPlugin("static", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     setupStatic,
-	})
+	caddy.RegisterModule(Plugin{})
+	dhcpserver.RegisterHandlerDirective("static", setupStatic)
 }
 
-func setupStatic(c *caddy.Controller) error {
-	plg, err := makeStaticPlugin(c)
-	if err != nil {
-		return err
+// CaddyModule returns the Caddy module information.
+func (Plugin) CaddyModule() caddy.ModuleInfo {
+	return caddy.ModuleInfo{
+		ID:  "dhcp.handlers.static",
+		New: func() caddy.Module { return new(Plugin) },
+	}
+}
+
+// Provision sets up the plugin for the server it is provisioned by.
+func (s *Plugin) Provision(ctx caddy.Context) error {
+	s.Config = dhcpserver.ServerFromContext(ctx)
+	if s.Config == nil {
+		return errors.New("static must be provisioned by a DHCP server")
 	}
 
-	plg.Config.AddPlugin(func(next plugin.Handler) plugin.Handler {
-		plg.Next = next
+	s.L = ctx.Logger().Sugar()
 
-		return plg
-	})
+	// ServeDHCP looks clients up by the canonical (lower case) form of their
+	// MAC address, so store the addresses by that form
+	addresses := make(map[string]net.IP, len(s.Addresses))
+	clients := make(map[string]string, len(s.Addresses))
+	for key, ip := range s.Addresses {
+		mac, err := net.ParseMAC(key)
+		if err != nil {
+			return fmt.Errorf("invalid MAC address %s: %w", key, err)
+		}
+
+		if ip == nil {
+			return fmt.Errorf("no IP address configured for client %s", key)
+		}
+
+		if _, ok := addresses[mac.String()]; ok {
+			return fmt.Errorf("static IP address has already been configured for client %s", mac)
+		}
+
+		if other, ok := clients[ip.String()]; ok {
+			return fmt.Errorf("IP %s already used for client %s", ip, other)
+		}
+
+		addresses[mac.String()] = ip
+		clients[ip.String()] = key
+	}
+
+	s.Addresses = addresses
+
 	return nil
 }
 
-func makeStaticPlugin(c *caddy.Controller) (*Plugin, error) {
+// Wrap implements plugin.Middleware.
+func (s *Plugin) Wrap(next plugin.Handler) plugin.Handler {
+	s.Next = next
+	return s
+}
+
+func setupStatic(h dhcpserver.Helper) (caddy.Module, error) {
+	plg := new(Plugin)
+	return plg, plg.UnmarshalCaddyfile(h.Dispenser)
+}
+
+// UnmarshalCaddyfile sets up the plugin from all static directives of a
+// server block.
+func (s *Plugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 	addr := make(map[string]net.IP)
 	ips := make(map[string]struct{})
 
 	for c.Next() {
 		if !c.NextArg() {
-			return nil, c.ArgErr()
+			return c.ArgErr()
 		}
 
-		key := c.Val()
-		if _, err := net.ParseMAC(key); err != nil {
-			return nil, c.ArgErr()
+		mac, err := net.ParseMAC(c.Val())
+		if err != nil {
+			return c.ArgErr()
 		}
+		key := mac.String()
 
 		if !c.NextArg() {
-			return nil, c.ArgErr()
+			return c.ArgErr()
 		}
 		ip := net.ParseIP(c.Val())
 		if ip == nil {
-			return nil, c.ArgErr()
+			return c.ArgErr()
 		}
 
 		if e, ok := addr[key]; ok {
-			return nil, fmt.Errorf("static IP address %s has already been configured for client %s", e.String(), key)
+			return fmt.Errorf("static IP address %s has already been configured for client %s", e.String(), key)
 		}
 
 		if _, ok := ips[ip.String()]; ok {
-			return nil, fmt.Errorf("IP %s already used for client %s", ip, key)
+			return fmt.Errorf("IP %s already used for client %s", ip, key)
 		}
 
 		addr[key] = ip
 		ips[ip.String()] = struct{}{}
 	}
 
-	plg := &Plugin{
-		Addresses: addr,
-		Config:    dhcpserver.GetConfig(c),
-	}
+	s.Addresses = addr
 
-	plg.L = log.GetLogger(c, plg)
-
-	return plg, nil
+	return nil
 }
+
+// Interface guards
+var (
+	_ caddy.Provisioner     = (*Plugin)(nil)
+	_ caddyfile.Unmarshaler = (*Plugin)(nil)
+	_ plugin.Middleware     = (*Plugin)(nil)
+)

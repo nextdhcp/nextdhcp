@@ -4,20 +4,14 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 )
 
 func init() {
-	caddy.RegisterPlugin("interface", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     setupInterface,
-	})
+	dhcpserver.RegisterDirective("interface", setupInterface)
 }
 
-func setupInterface(c *caddy.Controller) error {
-	config := dhcpserver.GetConfig(c)
-
+func setupInterface(c dhcpserver.Helper) error {
 	for c.Next() {
 		if !c.NextArg() {
 			return c.ArgErr()
@@ -28,7 +22,7 @@ func setupInterface(c *caddy.Controller) error {
 			return fmt.Errorf("failed to find interface with name %s: %s", c.Val(), err.Error())
 		}
 
-		config.Interface = *iface
+		c.Server.Interface = iface.Name
 	}
 
 	return nil

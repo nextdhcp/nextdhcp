@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Knetic/govaluate"
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/replacer"
 )
@@ -34,7 +34,7 @@ type (
 
 // SetupMatcher parses the current dispenser block and returns a DHCP
 // message matcher
-func SetupMatcher(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, error) {
+func SetupMatcher(c *caddyfile.Dispenser, fns ...map[string]ExprFunc) (*Matcher, error) {
 	exprStr, err := ParseConditions(c)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func SetupMatcher(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, er
 
 // SetupMatcherRemainingArgs creates a new DHCPv4 coniditon matcher from the remaining args
 // available in the current dispenser line
-func SetupMatcherRemainingArgs(c *caddy.Controller, fns ...map[string]ExprFunc) (*Matcher, error) {
+func SetupMatcherRemainingArgs(c *caddyfile.Dispenser, fns ...map[string]ExprFunc) (*Matcher, error) {
 	exprStr := strings.Join(c.RemainingArgs(), " ")
 
 	return SetupMatcherString(exprStr, fns...)

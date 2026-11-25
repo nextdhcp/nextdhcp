@@ -2,9 +2,12 @@ package lease
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"time"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
@@ -12,22 +15,37 @@ import (
 )
 
 func init() {
-	caddy.RegisterPlugin("lease", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     setupLease,
-	})
+	caddy.RegisterModule(leaseTimePlugin{})
+	dhcpserver.RegisterHandlerDirective("lease", setupLease)
 }
 
 type leaseTimePlugin struct {
-	next      plugin.Handler
-	leaseTime time.Duration
+	// LeaseTime is the lease time offered to clients, unless a handler before
+	// this one already set it.
+	LeaseTime caddy.Duration `json:"lease_time,omitempty"`
+
+	next plugin.Handler
+}
+
+// CaddyModule returns the Caddy module information.
+func (leaseTimePlugin) CaddyModule() caddy.ModuleInfo {
+	return caddy.ModuleInfo{
+		ID:  "dhcp.handlers.lease",
+		New: func() caddy.Module { return new(leaseTimePlugin) },
+	}
+}
+
+// Wrap implements plugin.Middleware.
+func (p *leaseTimePlugin) Wrap(next plugin.Handler) plugin.Handler {
+	p.next = next
+	return p
 }
 
 func (p *leaseTimePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	if dhcpserver.Discover(req) || dhcpserver.Request(req) {
 		code := dhcpv4.OptionIPAddressLeaseTime.Code()
 		if _, ok := res.Options[code]; !ok {
-			res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(p.leaseTime))
+			res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(time.Duration(p.LeaseTime)))
 		}
 	}
 
@@ -38,28 +56,54 @@ func (p *leaseTimePlugin) Name() string {
 	return "lease"
 }
 
-func setupLease(c *caddy.Controller) error {
-	config := dhcpserver.GetConfig(c)
+func setupLease(h dhcpserver.Helper) (caddy.Module, error) {
+	p := new(leaseTimePlugin)
+	return p, p.UnmarshalCaddyfile(h.Dispenser)
+}
 
+// UnmarshalCaddyfile sets up the plugin from all lease directives of a
+// server block.
+func (p *leaseTimePlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 	for c.Next() {
 		if !c.NextArg() {
 			return c.ArgErr()
 		}
 
-		d, err := time.ParseDuration(c.Val())
+		// Unlike time.ParseDuration, caddy.ParseDuration supports days
+		d, err := caddy.ParseDuration(c.Val())
 		if err != nil {
-			return c.SyntaxErr("time.Duration")
+			return c.SyntaxErr("a duration, like 1h or 1d")
 		}
 
-		config.LeaseTime = d
+		if !leaseTimeInRange(d) {
+			return c.Errf("lease time %s out of range", c.Val())
+		}
+
+		p.LeaseTime = caddy.Duration(d)
 	}
-
-	config.AddPlugin(func(next plugin.Handler) plugin.Handler {
-		return &leaseTimePlugin{
-			next:      next,
-			leaseTime: config.LeaseTime,
-		}
-	})
 
 	return nil
 }
+
+// Validate checks the lease time of a JSON config like UnmarshalCaddyfile
+// checks the one of a Dhcpfile.
+func (p *leaseTimePlugin) Validate() error {
+	if d := time.Duration(p.LeaseTime); !leaseTimeInRange(d) {
+		return fmt.Errorf("lease time %s out of range", d)
+	}
+
+	return nil
+}
+
+// leaseTimeInRange reports whether d fits into the lease time option, which
+// holds an unsigned 32 bit number of seconds.
+func leaseTimeInRange(d time.Duration) bool {
+	return d >= 0 && d/time.Second <= math.MaxUint32
+}
+
+// Interface guards
+var (
+	_ caddy.Validator       = (*leaseTimePlugin)(nil)
+	_ caddyfile.Unmarshaler = (*leaseTimePlugin)(nil)
+	_ plugin.Middleware     = (*leaseTimePlugin)(nil)
+)

@@ -3,18 +3,18 @@ package matcher
 import (
 	"strings"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 )
 
 // ParseConditions parses the current dispenser block for if and if_op conditions
 // and returns them as a single, concatenated expression string usable for
 // govaluate.NewEvaluableExpression() and similar
-func ParseConditions(c *caddy.Controller) (string, error) {
+func ParseConditions(c *caddyfile.Dispenser) (string, error) {
 	var conds []string
 	op := "&&"
-	disp := c.Dispenser // get a copy of the dispenser so we don't actually
+	disp := *c // get a copy of the dispenser so we don't actually
 
-	for disp.NextBlock() {
+	for disp.NextBlock(0) {
 		switch disp.Val() {
 		case "if":
 			conds = append(conds, strings.Join(disp.RemainingArgs(), " "))

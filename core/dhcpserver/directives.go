@@ -1,6 +1,7 @@
 package dhcpserver
 
-// Directives that we register at caddy
+// Directives lists the directives of the Dhcpfile. Directives are set up in
+// this order, and handlers are added to the chain in this order.
 var Directives = []string{
 	"log",
 	"database",

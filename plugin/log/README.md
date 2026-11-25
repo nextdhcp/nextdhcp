@@ -22,6 +22,8 @@ log LEVEL
 
 * **LEVEL** is the log level to use. Valid levels are `debug`, `info`, `warn` and `error`. Default is `info`.
 
+NextDHCP logs to standard error through Caddy's logger. The log level applies to all logs, and logs are human-readable if standard error is a terminal and JSON otherwise.
+
 ## Examples
 
 To enable debug logging place the following line in your Dhcpfile:

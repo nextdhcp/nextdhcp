@@ -36,6 +36,8 @@ will be sent for each message.
 * **TITLE** is the title of the notification. All [replacement keys](../../core/replacer/README.md) are supported.
 * **MESSAGE** is the message that should be sent. All [replacement keys](../../core/replacer/README.md) are supported.
 
+A **TITLE** or **MESSAGE** that contains spaces must be enclosed in double quotes (`"`). Single quotes are only used for strings inside a **CONDITION**.
+
 ## Examples
 
 This example will send a notification for each client that requests a new IP address:
@@ -43,7 +45,7 @@ This example will send a notification for each client that requests a new IP add
 ```
 gotify msgtype == 'REQUEST' && clientip != '' {
     server https://gotify.example.com Adk57Vkdh487
-    title '{msgtype} by {hostname}'
-    message 'Client {hwaddr} ' 
+    title "{msgtype} by {hostname}"
+    message "Client {hwaddr}"
 }
 ```

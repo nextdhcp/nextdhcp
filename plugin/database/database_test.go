@@ -9,7 +9,21 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// setupDatabase sets up the database directive like v1 did: it also opens
+// the database, which now happens when the server is provisioned.
+func setupDatabase(t *testing.T, c dhcpserver.Helper) (*dhcpserver.Server, error) {
+	if err := parseDatabaseDirective(c); err != nil {
+		return nil, err
+	}
+
+	srv, err := test.ProvisionServer(t, c.Server)
+	require.NoError(t, err)
+
+	return srv, nil
+}
 
 var seededRand *rand.Rand
 
@@ -34,8 +48,9 @@ func TestDatabaseSetup(t *testing.T) {
 
 	t.Run("no args", func(t *testing.T) {
 		c := test.CreateTestBed(t, "database test-driver")
-		assert.NoError(t, parseDatabaseDirective(c))
-		assert.NotNil(t, dhcpserver.GetConfig(c).Database)
+		srv, err := setupDatabase(t, c)
+		assert.NoError(t, err)
+		assert.NotNil(t, srv.Database)
 	})
 
 	t.Run("args", func(t *testing.T) {
@@ -43,8 +58,9 @@ func TestDatabaseSetup(t *testing.T) {
 			barg1 1
 			barg2 2 3
 		}`)
-		assert.NoError(t, parseDatabaseDirective(c))
-		assert.NotNil(t, dhcpserver.GetConfig(c).Database)
+		srv, err := setupDatabase(t, c)
+		assert.NoError(t, err)
+		assert.NotNil(t, srv.Database)
 		assert.NotNil(t, argsOpts)
 
 		expected := map[string][]string{
@@ -57,17 +73,21 @@ func TestDatabaseSetup(t *testing.T) {
 
 	t.Run("invalid", func(t *testing.T) {
 		c := test.CreateTestBed(t, "database")
-		assert.Error(t, parseDatabaseDirective(c))
+		_, err := setupDatabase(t, c)
+		assert.Error(t, err)
 
 		c = test.CreateTestBed(t, "")
-		assert.Error(t, parseDatabaseDirective(c))
+		_, err = setupDatabase(t, c)
+		assert.Error(t, err)
 
 		c = test.CreateTestBed(t, "database invalid-driver")
-		assert.Error(t, parseDatabaseDirective(c))
+		_, err = setupDatabase(t, c)
+		assert.Error(t, err)
 
 		c = test.CreateTestBed(t, `database test-driver {
 			block arg
 		} something else`)
-		assert.Error(t, parseDatabaseDirective(c))
+		_, err = setupDatabase(t, c)
+		assert.Error(t, err)
 	})
 }

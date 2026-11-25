@@ -2,6 +2,7 @@ package mqtt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -26,8 +27,9 @@ type (
 		cleanSession bool
 		qos          int
 
-		l sync.Mutex
-		c mqtt.Client
+		l      sync.Mutex
+		c      mqtt.Client
+		closed bool // set by Cleanup, after which no connection is opened
 	}
 
 	mqttConfig struct {
@@ -40,9 +42,13 @@ type (
 	}
 
 	mqttPlugin struct {
+		// Publish configures the messages to publish, in order.
+		Publish []PublishConfig `json:"publish,omitempty"`
+
 		configs []*mqttConfig
 		l       log.Logger
 		next    plugin.Handler
+		wg      sync.WaitGroup // used in tests to wait until all messages are published
 	}
 )
 
@@ -60,7 +66,16 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 	}
 
 	for _, cfg := range m.configs {
+		// a configuration without topic only configures a connection for
+		// other configurations to use
+		if cfg.topic == nil {
+			continue
+		}
+
+		m.wg.Add(1)
 		go func(cfg *mqttConfig) {
+			defer m.wg.Done()
+
 			match, err := cfg.Match(ctx, req)
 			if err != nil {
 				l.Errorf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
@@ -82,7 +97,7 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 
 				payload, err := cfg.payload(ctx, req, nil)
 				if err != nil {
-					l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
+					l.Errorf("failed to get MQTT payload for %q: %s", cfg.name, err.Error())
 					return
 				}
 
@@ -112,6 +127,10 @@ func (m *mqttPlugin) getClient(cfg *mqttConfig) (mqtt.Client, int, error) {
 
 	cfg.conn.l.Lock()
 	defer cfg.conn.l.Unlock()
+
+	if cfg.conn.closed {
+		return nil, 0, errors.New("MQTT connection already closed")
+	}
 
 	if cfg.conn.c == nil {
 		if err := cfg.conn.open(m.l); err != nil {

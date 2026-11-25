@@ -4,19 +4,39 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
 func init() {
-	caddy.RegisterPlugin("next-server", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     setupNextServer,
-	})
+	caddy.RegisterModule(nextServerPlugin{})
+	dhcpserver.RegisterHandlerDirective("next-server", setupNextServer)
 }
 
-func setupNextServer(c *caddy.Controller) error {
+// CaddyModule returns the Caddy module information.
+func (nextServerPlugin) CaddyModule() caddy.ModuleInfo {
+	return caddy.ModuleInfo{
+		ID:  "dhcp.handlers.next_server",
+		New: func() caddy.Module { return new(nextServerPlugin) },
+	}
+}
+
+// Wrap implements plugin.Middleware.
+func (s *nextServerPlugin) Wrap(next plugin.Handler) plugin.Handler {
+	s.next = next
+	return s
+}
+
+func setupNextServer(h dhcpserver.Helper) (caddy.Module, error) {
+	p := new(nextServerPlugin)
+	return p, p.UnmarshalCaddyfile(h.Dispenser)
+}
+
+// UnmarshalCaddyfile sets up the plugin from the next-server directive of a
+// server block.
+func (s *nextServerPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 	if !c.Next() {
 		return c.ArgErr()
 	}
@@ -35,12 +55,13 @@ func setupNextServer(c *caddy.Controller) error {
 		return c.ArgErr()
 	}
 
-	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
-		return &nextServerPlugin{
-			next:       next,
-			nextServer: ip,
-		}
-	})
+	s.NextServer = ip
 
 	return nil
 }
+
+// Interface guards
+var (
+	_ caddyfile.Unmarshaler = (*nextServerPlugin)(nil)
+	_ plugin.Middleware     = (*nextServerPlugin)(nil)
+)

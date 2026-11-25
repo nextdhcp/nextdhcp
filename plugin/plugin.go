@@ -27,6 +27,14 @@ type (
 	// The provided context will always have a lease.Database assigned to it. A
 	// reference to the database can be loaded by using lease.GetDatabase(ctx)
 	HandlerFunc func(ctx context.Context, req *dhcpv4.DHCPv4, resp *dhcpv4.DHCPv4) error
+
+	// Middleware is implemented by the Caddy modules in the "dhcp.handlers"
+	// namespace, which a DHCP server builds its handler chain from. The server
+	// calls Wrap once, with the next handler in the chain, and calls the
+	// returned handler for each request.
+	Middleware interface {
+		Wrap(next Handler) Handler
+	}
 )
 
 // ServeDHCP implements the Handler interface

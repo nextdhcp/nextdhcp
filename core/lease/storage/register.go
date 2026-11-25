@@ -26,6 +26,13 @@ func MustRegister(name string, factory Factory) {
 	}
 }
 
+// IsRegistered reports whether a storage driver with the given name is
+// registered
+func IsRegistered(name string) bool {
+	_, ok := registeredFactorys[name]
+	return ok
+}
+
 // Open opens a lease.Database using driver name
 func Open(name string, args map[string][]string) (LeaseStorage, error) {
 	factory, ok := registeredFactorys[name]

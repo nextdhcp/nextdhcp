@@ -3,7 +3,7 @@ package option
 import (
 	"testing"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/stretchr/testify/assert"
 )
@@ -59,8 +59,12 @@ func TestCustomOption(t *testing.T) {
 	}
 }
 
-func getController(input string) *caddy.Controller {
-	return caddy.NewTestController("dhcpv4", input)
+func getController(input string) *caddyfile.Dispenser {
+	return caddyfile.NewTestDispenser(input)
+}
+
+func unmarshalOption(c *caddyfile.Dispenser) error {
+	return new(Plugin).UnmarshalCaddyfile(c)
 }
 
 func TestSetupPlugin(t *testing.T) {
@@ -73,7 +77,7 @@ func TestSetupPlugin(t *testing.T) {
 	for _, c := range cases {
 		ctrl := getController(c.I)
 
-		err := setupOption(ctrl)
+		err := unmarshalOption(ctrl)
 		if c.E {
 			assert.Error(t, err)
 		} else {

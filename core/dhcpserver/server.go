@@ -2,60 +2,219 @@ package dhcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"runtime/debug"
 	"sync"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/socket"
+	"github.com/nextdhcp/nextdhcp/core/utils/iface"
+	"github.com/nextdhcp/nextdhcp/plugin"
+	"go.uber.org/zap"
 )
 
-// Server represents an instance of a server which
-// serves DHCP clients on a particular interface.
-// Each Server may serve multiple IP subnets on the
-// same interface picking the first defined one as
-// the default. The other subnets may be either queried
-// directly by requesting an IP address located there
-// or by the use of DHCP relay agents
+// listenDHCP opens the connection a server receives requests on and sends
+// responses through. Tests replace it so they don't need raw sockets.
+var listenDHCP = func(l log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
+	return socket.ListenDHCP(l, ip, ifc)
+}
+
+// Server serves DHCP clients on one subnet. Each server block of the Dhcpfile
+// is adapted to one Server.
 type Server struct {
-	dhcpWg sync.WaitGroup
-	cfg    *Config
+	// Subnet is the subnet to serve, and is required. It is either an IPv4
+	// address in CIDR notation, where the address is the server's own address
+	// on the subnet (for example 192.168.0.1/24), or the name of a network
+	// interface that has exactly one IPv4 address.
+	Subnet string `json:"subnet,omitempty"`
+
+	// Interface is the name of the network interface to serve the subnet on.
+	// It defaults to the interface that has the server's address assigned.
+	Interface string `json:"interface,omitempty"`
+
+	// DatabaseConfig configures the lease database. It defaults to a bolt
+	// database in the file "<server address>.db" in the working directory.
+	DatabaseConfig *DatabaseConfig `json:"database,omitempty"`
+
+	// HandlersRaw is the handler chain, in the order requests are passed
+	// through it. Each handler decides whether to call the next one.
+	HandlersRaw []json.RawMessage `json:"handle,omitempty" caddy:"namespace=dhcp.handlers inline_key=handler"`
+
+	// IP is the server's own address on the subnet. It is set when the server
+	// is provisioned.
+	IP net.IP `json:"-"`
+
+	// Network is the subnet. It is set when the server is provisioned.
+	Network net.IPNet `json:"-"`
+
+	// Database is the lease database that is queried for new leases and
+	// reservations. It is opened when the server is provisioned.
+	Database lease.Database `json:"-"`
+
+	iface  net.Interface        // the interface the subnet is served on
+	store  storage.LeaseStorage // the storage of the lease database
+	chain  plugin.Handler       // the first handler of the chain
+	logger *zap.SugaredLogger
+
+	conn    net.PacketConn
+	serveWg sync.WaitGroup // the read loop
+	dhcpWg  sync.WaitGroup // requests being served
 }
 
-// NewServer returns a new DHCPv4 server that compiles all plugins in to it
-func NewServer(cfg *Config) (*Server, error) {
-	s := &Server{cfg: cfg}
+// Provision resolves the subnet and the interface, opens the lease database
+// and loads the handler chain. Handlers can get the server from the context
+// they are provisioned with, using ServerFromContext.
+func (s *Server) Provision(ctx caddy.Context) error {
+	s.logger = ctx.Logger().Sugar()
 
-	s.dhcpWg.Add(1)
+	ip, ipNet, err := iface.ByNameOrCIDR(s.Subnet)
+	if err != nil {
+		return fmt.Errorf("failed to get subnet configuration for %s: %s", s.Subnet, err.Error())
+	}
+	s.IP = ip
+	s.Network = *ipNet
 
-	return s, nil
-}
+	if s.Interface != "" {
+		ifc, err := net.InterfaceByName(s.Interface)
+		if err != nil {
+			return fmt.Errorf("failed to find interface with name %s: %s", s.Interface, err.Error())
+		}
+		s.iface = *ifc
+	}
 
-// Serve is a NO-OP as TCP is not supported by dhcpserver. It
-// implements the caddy.TCPServer interface
-func (s *Server) Serve(l net.Listener) error {
+	if !findInterface(s) {
+		return fmt.Errorf("failed to find interface for subnet %s", s.Network.String())
+	}
+
+	if err := s.openDatabase(); err != nil {
+		return fmt.Errorf("failed to open database for subnet %s: %s", s.Network.String(), err.Error())
+	}
+
+	mods, err := WithServer(ctx, s).LoadModule(s, "HandlersRaw")
+	if err != nil {
+		return fmt.Errorf("failed to load handlers for subnet %s: %s", s.Network.String(), err.Error())
+	}
+
+	var handlers []plugin.Middleware
+	for i, m := range mods.([]any) {
+		h, ok := m.(plugin.Middleware)
+		if !ok {
+			return fmt.Errorf("handler %d of subnet %s (%T) is not a plugin.Middleware", i, s.Network.String(), m)
+		}
+		handlers = append(handlers, h)
+	}
+
+	s.buildMiddlewareChain(handlers)
+
 	return nil
 }
 
-// ServePacket starts the server with an existing PacketConn. It blocks until
-// the server stops. This implements the caddy.UDPServer interface
-func (s *Server) ServePacket(c net.PacketConn) error {
-	// TODO(ppacher): we may remove the following check
-	_, ok := c.(*socket.DHCPConn)
-	if !ok {
-		return errors.New("expected socket.DHCPConn")
+// Cleanup closes the lease database. It is safe to call on a server that
+// failed to provision.
+func (s *Server) Cleanup() error {
+	var err error
+	if c, ok := s.store.(io.Closer); ok {
+		err = c.Close()
 	}
+
+	s.store = nil
+	s.Database = nil
+
+	return err
+}
+
+func findInterface(s *Server) bool {
+	if s.iface.Name != "" && len(s.iface.HardwareAddr) > 0 {
+		return true
+	}
+
+	ifc, err := iface.ByIP(s.IP)
+	if err != nil {
+		return false
+	}
+
+	s.iface = *ifc
+	return true
+}
+
+func (s *Server) buildMiddlewareChain(handlers []plugin.Middleware) {
+	var endOfChainHandler plugin.HandlerFunc = func(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+		peer := GetPeer(ctx)
+		l := log.With(ctx, s.logger)
+
+		// if it's a DHCPREQUEST that we didn't handle yet we will send
+		// DHCPNAK
+		if Request(req) {
+			l.Warnf("unhandled DHCPREQUEST, responding with DHCPNAK")
+			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
+			return nil
+		}
+
+		l.Infof("%s from %s not handled. dropping", req.MessageType().String(), peer)
+		return ErrNoResponse
+	}
+
+	var chain plugin.Handler = endOfChainHandler
+	for i := len(handlers) - 1; i >= 0; i-- {
+		chain = handlers[i].Wrap(chain)
+		s.logger.Debugf("plugin (%d) %s setup", i, chain.Name())
+	}
+
+	s.chain = chain
+}
+
+// start opens the server's connection and starts serving requests from it.
+func (s *Server) start() error {
+	conn, err := listenDHCP(s.logger, s.IP, &s.iface)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s (%s): %w", s.IP, s.iface.Name, err)
+	}
+	s.conn = conn
+
+	s.serveWg.Add(1)
+	go func() {
+		defer s.serveWg.Done()
+
+		if err := s.ServePacket(conn); err != nil && !errors.Is(err, net.ErrClosed) {
+			s.logger.Errorf("stopped serving subnet %s: %s", s.Network.String(), err.Error())
+		}
+	}()
+
+	return nil
+}
+
+// stop closes the server's connection and waits for the requests being
+// served to finish.
+func (s *Server) stop() error {
+	if s.conn == nil {
+		return nil
+	}
+
+	err := s.conn.Close()
+	s.serveWg.Wait()
+	s.dhcpWg.Wait()
+	s.conn = nil
+
+	return err
+}
+
+// ServePacket serves requests read from c until reading from it fails, for
+// example because c was closed.
+func (s *Server) ServePacket(c net.PacketConn) error {
 	for {
 		payload := make([]byte, 4096)
 		byteLen, addr, err := c.ReadFrom(payload)
 
 		if byteLen > 0 {
-			s.cfg.logger.Debugf("serving request from %s", addr)
+			s.logger.Debugf("serving request from %s", addr)
 			s.dhcpWg.Add(1)
 			go s.serveAndLogDHCPv4(c, payload[:byteLen], addr)
 		}
@@ -72,47 +231,25 @@ func (s *Server) ServePacket(c net.PacketConn) error {
 	}
 }
 
-// Listen does nothing as TCP is not supported. It implements the
-// caddy.TCPServer interface
-func (s *Server) Listen() (net.Listener, error) {
-	return nil, nil
-}
-
-// ListenPacket starts listening for DHCP request messages via UDP/Raw sockets
-// This implements the caddy.UDPServer interface
-func (s *Server) ListenPacket() (net.PacketConn, error) {
-	return socket.ListenDHCP(s.cfg.logger, s.cfg.IP, &s.cfg.Interface)
-}
-
-// OnStartupComplete is called when all serves of the same instance have
-// been started. It implements the caddy.AfterStarup interface
-func (s *Server) OnStartupComplete() {
-	info := getStartupInfo([]*Config{s.cfg})
-	if info != "" {
-		// Print not Println because info contains a trailing new line
-		fmt.Print(info)
-	}
-}
-
 func (s *Server) serveAndLogDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) {
 	defer s.dhcpWg.Done()
 	// In any case we must not panic while serving requests
 	defer func() {
 		if x := recover(); x != nil {
-			s.cfg.logger.Infof("Caught panic while serving a DHCP request from %s", addr.String())
-			s.cfg.logger.Infof("\t%v", x)
-			s.cfg.logger.Infof(string(debug.Stack()))
+			s.logger.Infof("Caught panic while serving a DHCP request from %s", addr.String())
+			s.logger.Infof("\t%v", x)
+			s.logger.Infof("%s", debug.Stack())
 		}
 	}()
 
 	err := s.serveDHCPv4(c, payload, addr)
 	if err != nil {
-		s.cfg.logger.Warnf("failed to serve request from %s: %s", addr.String(), err.Error())
+		s.logger.Warnf("failed to serve request from %s: %s", addr.String(), err.Error())
 	}
 }
 
-func (s *Server) findSubnetConfig(gwIP net.IP) *Config {
-	return s.cfg
+func (s *Server) findSubnetConfig(gwIP net.IP) *Server {
+	return s
 }
 
 func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) error {
@@ -137,7 +274,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 	// if it matches our server IP and drop the request entirely if not
 	reqID := msg.ServerIdentifier()
 	if reqID != nil && !reqID.IsUnspecified() && reqID.String() != cfg.IP.String() {
-		s.cfg.logger.Debugf("ignoring packet with incorrect server ID %q from %s", reqID, msg.ClientHWAddr)
+		s.logger.Debugf("ignoring packet with incorrect server ID %q from %s", reqID, msg.ClientHWAddr)
 		return nil
 	}
 	// make sure to add the server identifier option to all DHCP messages
@@ -183,7 +320,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 
 // updateConnectionAddresses tries to get the correct source and destination connection tuples (IP + MAC)
 // as defined by RCP
-func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, req, resp *dhcpv4.DHCPv4) net.Addr {
+func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Server, req, resp *dhcpv4.DHCPv4) net.Addr {
 	l := log.With(ctx, cfg.logger)
 
 	// From RFC (https://tools.ietf.org/html/rfc2131):
@@ -205,7 +342,7 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, 
 	if a, ok := addr.(*socket.Addr); ok {
 		// if we known our local IP and MAC address we'll use that for sending
 		if a.Local.IP.IsUnspecified() || a.Local.IP.String() == "255.255.255.255" {
-			a.Local.MAC = cfg.Interface.HardwareAddr
+			a.Local.MAC = cfg.iface.HardwareAddr
 			a.Local.IP = cfg.IP
 		}
 
@@ -246,5 +383,8 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Config, 
 	return addr
 }
 
-// Compile-Time check
-var _ caddy.Server = &Server{}
+// Interface guards
+var (
+	_ caddy.Provisioner  = (*Server)(nil)
+	_ caddy.CleanerUpper = (*Server)(nil)
+)

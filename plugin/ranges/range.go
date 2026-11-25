@@ -2,10 +2,12 @@ package ranges
 
 import (
 	"context"
+	"errors"
 	"net"
 	"time"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/lease"
@@ -15,26 +17,54 @@ import (
 )
 
 func init() {
-	caddy.RegisterPlugin("range", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     setupRange,
-	})
+	caddy.RegisterModule(RangePlugin{})
+	dhcpserver.RegisterHandlerDirective("range", setupRange)
 }
 
 // RangePlugin assigned IP address from preconfigured ranges
 type RangePlugin struct {
-	// Next is the next handler in the chain
-	Next plugin.Handler
-
 	// Ranges holds all IP ranges that can be used by the plugin
-	Ranges iprange.IPRanges
+	Ranges iprange.IPRanges `json:"ranges,omitempty"`
+
+	// Next is the next handler in the chain
+	Next plugin.Handler `json:"-"`
 
 	// Network defines the network that is served by the plugin
-	// setupRange copies this from the dhcpserver.Config
-	Network net.IPNet
+	// Provision copies this from the dhcpserver.Server
+	Network net.IPNet `json:"-"`
 
 	// L holds the logger to use
-	L log.Logger
+	L log.Logger `json:"-"`
+}
+
+// CaddyModule returns the Caddy module information.
+func (RangePlugin) CaddyModule() caddy.ModuleInfo {
+	return caddy.ModuleInfo{
+		ID:  "dhcp.handlers.range",
+		New: func() caddy.Module { return new(RangePlugin) },
+	}
+}
+
+// Provision sets up the plugin for the server it is provisioned by.
+func (p *RangePlugin) Provision(ctx caddy.Context) error {
+	srv := dhcpserver.ServerFromContext(ctx)
+	if srv == nil {
+		return errors.New("range must be provisioned by a DHCP server")
+	}
+
+	p.Network = srv.Network
+	p.L = ctx.Logger().Sugar()
+	p.Ranges = iprange.Merge(p.Ranges)
+
+	p.L.Debugf("serving %d IP ranges: %v", len(p.Ranges), p.Ranges)
+
+	return nil
+}
+
+// Wrap implements plugin.Middleware.
+func (p *RangePlugin) Wrap(next plugin.Handler) plugin.Handler {
+	p.Next = next
+	return p
 }
 
 func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr, requested net.IP, db lease.Database) net.IP {
@@ -236,13 +266,14 @@ func (p *RangePlugin) Name() string {
 	return "range"
 }
 
-func setupRange(c *caddy.Controller) error {
-	cfg := dhcpserver.GetConfig(c)
-	plg := &RangePlugin{
-		Network: cfg.Network,
-	}
-	plg.L = log.GetLogger(c, plg)
+func setupRange(h dhcpserver.Helper) (caddy.Module, error) {
+	plg := new(RangePlugin)
+	return plg, plg.UnmarshalCaddyfile(h.Dispenser)
+}
 
+// UnmarshalCaddyfile sets up the plugin from all range directives of a
+// server block.
+func (p *RangePlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 	for c.Next() {
 		if !c.NextArg() {
 			return c.ArgErr()
@@ -267,18 +298,18 @@ func setupRange(c *caddy.Controller) error {
 			End:   endIP,
 		}
 
-		plg.Ranges = iprange.Merge(append(plg.Ranges, r))
+		p.Ranges = iprange.Merge(append(p.Ranges, r))
 	}
-
-	plg.L.Debugf("serving %d IP ranges: %v", len(plg.Ranges), plg.Ranges)
-
-	cfg.AddPlugin(func(next plugin.Handler) plugin.Handler {
-		plg.Next = next
-		return plg
-	})
 
 	return nil
 }
+
+// Interface guards
+var (
+	_ caddy.Provisioner     = (*RangePlugin)(nil)
+	_ caddyfile.Unmarshaler = (*RangePlugin)(nil)
+	_ plugin.Middleware     = (*RangePlugin)(nil)
+)
 
 func ipIsUnset(ip net.IP) bool {
 	return ip == nil || ip.IsUnspecified()

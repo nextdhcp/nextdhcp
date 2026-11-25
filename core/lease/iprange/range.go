@@ -12,8 +12,8 @@ import (
 // IPRange is a range of IP address from (inclusive) start to (inclusive)
 // end IP.
 type IPRange struct {
-	Start net.IP
-	End   net.IP
+	Start net.IP `json:"start"`
+	End   net.IP `json:"end"`
 }
 
 // Len returns the number of IP address available inside the range

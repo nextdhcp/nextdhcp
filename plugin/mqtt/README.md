@@ -27,8 +27,8 @@ mqtt [CONDITION] {
     [clean-session]
     [qos QOS]
     
-    [topic TITLE]
-    [payload MESSAGE]
+    [topic TOPIC]
+    [payload PAYLOAD]
 }
 ```
 
@@ -40,15 +40,15 @@ will be published for each DHCP message.
 * **PASSWORD** optionally configures the username required for authentication
 * `clean-session` forces a clean-session for the client
 * **QOS** specifies the Quality-of-Service byte to use when publishing. It should be a number between 0 and 2
-* **TOPIC** is the topic use to publish the message. All [replacement keys](../../core/replacer/README.md) are supported.
-* **PAYLOAD** is the the actual MQTT message payload. All [replacement keys](../../core/replacer/README.md) are supported.
+* **TOPIC** is the topic use to publish the message. All [replacement keys](../../core/replacer/README.md) are supported. A block without a topic doesn't publish anything: it can only configure a connection with a *name* for other blocks to *use*, and must not have a condition or payload.
+* **PAYLOAD** is the the actual MQTT message payload. All [replacement keys](../../core/replacer/README.md) are supported. If it is omitted, an empty payload is published.
 
 ## Examples
 
 This example will publish two notifications for each client that requests a new IP address to different topics:
 
 ```
-mqtt msgtype == 'REQUEST' and clientip != '' {
+mqtt msgtype == 'REQUEST' && clientip != '' {
     name default
     broker tcp://localhost:1883
     user mqtt-user-name
@@ -65,5 +65,19 @@ mqtt msgtype == 'REQUEST' {
 
     topic /dhcp/requested-ip/{clientip}
     payload "\{\"clientIP\": \"{clientip}\"\}"
+}
+```
+
+A block can also configure only a connection, which other blocks *use* to publish messages:
+
+```
+mqtt {
+    name local
+    broker tcp://localhost:1883
+}
+
+mqtt msgtype == 'DISCOVER' {
+    use local
+    topic /dhcp/discover/{hwaddr}
 }
 ```

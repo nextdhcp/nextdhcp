@@ -1,30 +1,91 @@
 package test
 
 import (
+	"context"
+	"encoding/json"
+	"net"
 	"testing"
 
-	"github.com/caddyserver/caddy"
-	"github.com/caddyserver/caddy/caddyfile"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/stretchr/testify/require"
 )
 
-// CreateTestBed creates a new caddy.Controller that is configured for
-// testing the setup and configuration of plugins. It creates a dummy server
-// block in the context of "dhcpv4" server type so plugins can safely assume
-// dhcpserver.GetConfig(ctrl) will return a valid configuration. The server
-// block itself is configured to serve on 127.0.0.1/8
-func CreateTestBed(t *testing.T, input string) *caddy.Controller {
-	ctrl := caddy.NewTestController("dhcpv4", input)
-	ctx := ctrl.Context()
+// TestSubnet is the subnet that the servers of CreateTestBed and Provision
+// serve.
+const TestSubnet = "127.0.0.1/8"
 
-	serverBlock := caddyfile.ServerBlock{
-		Keys:   []string{"127.0.0.1/8"},
-		Tokens: map[string][]caddyfile.Token{},
+// CreateTestBed creates a dhcpserver.Helper for testing the setup function of
+// a directive. Its dispenser reads input, and its server is a server for
+// TestSubnet, as a server block for that subnet would be adapted to.
+func CreateTestBed(t *testing.T, input string) dhcpserver.Helper {
+	t.Helper()
+
+	return dhcpserver.Helper{
+		Dispenser: caddyfile.NewTestDispenser(input),
+		Server:    &dhcpserver.Server{Subnet: TestSubnet},
+		Config:    &caddy.Config{},
+	}
+}
+
+// NewContext returns a context for provisioning modules in tests. It is
+// canceled, which cleans up the modules provisioned with it, when the test
+// ends.
+func NewContext(t *testing.T) caddy.Context {
+	t.Helper()
+
+	ctx, cancel := caddy.NewContext(caddy.Context{Context: context.Background()})
+	t.Cleanup(cancel)
+
+	return ctx
+}
+
+// Provision provisions the handler module m the way a server for TestSubnet
+// does when it loads m from its JSON config: it encodes m to JSON, decodes
+// the JSON into a new instance of the module and provisions the new
+// instance, which it returns.
+func Provision(t *testing.T, m caddy.Module) (caddy.Module, error) {
+	t.Helper()
+
+	raw, err := json.Marshal(m)
+	require.NoError(t, err)
+
+	ip, ipNet, err := net.ParseCIDR(TestSubnet)
+	require.NoError(t, err)
+
+	srv := &dhcpserver.Server{
+		Subnet:  TestSubnet,
+		IP:      ip,
+		Network: *ipNet,
 	}
 
-	blks, err := ctx.InspectServerBlocks("test-source", []caddyfile.ServerBlock{serverBlock})
-	require.NoError(t, err)
-	require.Equal(t, []caddyfile.ServerBlock{serverBlock}, blks)
+	ctx := dhcpserver.WithServer(NewContext(t), srv)
 
-	return ctrl
+	mod, err := ctx.LoadModuleByID(string(m.CaddyModule().ID), raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return mod.(caddy.Module), nil
+}
+
+// ProvisionServer provisions srv the way the dhcp app does when it loads srv
+// from its JSON config: it encodes srv to JSON, decodes the JSON into a new
+// server and provisions the new server, which it returns. The server is
+// cleaned up when the test ends.
+func ProvisionServer(t *testing.T, srv *dhcpserver.Server) (*dhcpserver.Server, error) {
+	t.Helper()
+
+	raw, err := json.Marshal(srv)
+	require.NoError(t, err)
+
+	provisioned := new(dhcpserver.Server)
+	require.NoError(t, json.Unmarshal(raw, provisioned))
+
+	t.Cleanup(func() {
+		require.NoError(t, provisioned.Cleanup())
+	})
+
+	return provisioned, provisioned.Provision(NewContext(t))
 }

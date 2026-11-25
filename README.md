@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/nextdhcp/nextdhcp)](https://goreportcard.com/report/github.com/nextdhcp/nextdhcp)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/nextdhcp/nextdhcp)](https://github.com/nextdhcp/nextdhcp/releases)
 
-NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's based on the [Caddy server framework](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/). It is still in early alpha and may not yet be considered stable.
+NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's built on [Caddy 2](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/): NextDHCP is a Caddy app, the Dhcpfile is adapted to Caddy's JSON config, and each plugin is a Caddy module. It is still in early alpha and may not yet be considered stable.
 
 <hr color="#6ad7e5">
 
@@ -21,7 +21,7 @@ To install, build and test NextDHCP you need [Go](https://go.dev) 1.26 or newer.
 
 To install NextDHCP without working on its source code, run:
 
-```
+```sh
 go install github.com/nextdhcp/nextdhcp@latest
 ```
 
@@ -29,7 +29,7 @@ This installs the NextDHCP binary into `$GOBIN`, or into `$GOPATH/bin` (`~/go/bi
 
 To work on NextDHCP, clone the repository and build it:
 
-```
+```sh
 git clone https://github.com/nextdhcp/nextdhcp
 cd nextdhcp
 go build -o nextdhcp .
@@ -39,7 +39,7 @@ go build -o nextdhcp .
 
 Before starting NextDHCP you need to create a configuration file. A typical configuration file for a local subnet can look like this:
 
-```bash
+```
 192.168.0.100 - 192.168.0.200
 lease 1h
 option {
@@ -65,7 +65,7 @@ Or, if you need to serve multiple subnets or multiple network interfaces you can
 
 Place your configuration into a file called `Dhcpfile` and start NextDHCP as root:
 
-```
+```sh
 sudo ./nextdhcp
 ```
 

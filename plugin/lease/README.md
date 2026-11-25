@@ -20,17 +20,17 @@ The *lease* plugin allows to configure the valid life-time of an IP address leas
 lease DURATION
 ```
 
-* **DURATION** is the duration for which a lease is valid. The format should follow the [time.Duration](https://godoc.org/golang.org/time) format supported by [Go](https://golang.org)
+* **DURATION** is the duration for which a lease is valid, like `1h` or `1d`. It supports the units of Go's [time.ParseDuration](https://pkg.go.dev/time#ParseDuration), like `h`, `m` and `s` for hours, minutes and seconds, and `d` for days. Units can be combined, like `1h30m`.
 
 ## Examples
 
-The *lease* directive supports all duration formats that Go supports. Thus, the following directive are all valid:
+The following directives are all valid:
 
 ```
 lease 1h
 lease 1d3m
 lease 3m30s
-lease 1y10m3s
+lease 7d
 ```
 
 An example could look like:
