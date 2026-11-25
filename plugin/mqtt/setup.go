@@ -2,6 +2,7 @@ package mqtt
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -16,7 +17,7 @@ import (
 )
 
 func init() {
-	caddy.RegisterModule(mqttPlugin{})
+	caddy.RegisterModule(new(mqttPlugin))
 	dhcpserver.RegisterHandlerDirective("mqtt", setupMqtt)
 }
 
@@ -60,8 +61,25 @@ type (
 	}
 )
 
+// validate checks that cfg either publishes messages or only configures a
+// named connection, without condition or payload, for others to use.
+func (cfg PublishConfig) validate() error {
+	if cfg.Connection == nil && cfg.Name == "" {
+		return errors.New("Either configure a MQTT connection or \"use\" an existing one")
+	}
+
+	onlyConnection := cfg.Connection != nil && cfg.Name != "" &&
+		cfg.Condition == "" && cfg.Payload == nil && cfg.PayloadFrom == nil
+
+	if cfg.Topic == nil && !onlyConnection {
+		return errors.New("a topic is required, unless the block only configures a named connection for other blocks to use")
+	}
+
+	return nil
+}
+
 // CaddyModule returns the Caddy module information.
-func (mqttPlugin) CaddyModule() caddy.ModuleInfo {
+func (*mqttPlugin) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "dhcp.handlers.mqtt",
 		New: func() caddy.Module { return new(mqttPlugin) },
@@ -74,6 +92,10 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 	m.configs = nil
 
 	for _, pub := range m.Publish {
+		if err := pub.validate(); err != nil {
+			return err
+		}
+
 		cond, err := matcher.SetupMatcherString(pub.Condition)
 		if err != nil {
 			return err
@@ -96,6 +118,9 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 
 		if pub.Topic != nil {
 			cfg.topic = getStringFactory(*pub.Topic)
+
+			// the payload is empty unless one is configured
+			cfg.payload = getStringFactory("")
 		}
 
 		if pub.Payload != nil {
@@ -214,6 +239,10 @@ func (m *mqttPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 
 		if !useExisting && cfg.Connection == nil {
 			return c.SyntaxErr("Either configure a MQTT connection or \"use\" an existing one")
+		}
+
+		if err := cfg.validate(); err != nil {
+			return c.Err(err.Error())
 		}
 
 		m.Publish = append(m.Publish, cfg)

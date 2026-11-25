@@ -55,7 +55,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 
 		// TODO(ppacher): we may remove this and make setting the subnet mask a default action of dhcpserver.Server
 		if req.IsOptionRequested(dhcpv4.OptionSubnetMask) {
-			req.UpdateOption(dhcpv4.OptSubnetMask(s.Config.Network.Mask))
+			res.UpdateOption(dhcpv4.OptSubnetMask(s.Config.Network.Mask))
 		}
 
 		s.L.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())

@@ -87,6 +87,7 @@ func TestMqttSetupPayloadOrder(t *testing.T) {
 	m, err := makeMqttPlugin(t, `
 	mqtt {
 		broker tcp://127.0.0.1:1883
+		topic some/topic
 		payload-from echo hello
 		payload "some payload"
 	}`)
@@ -112,8 +113,55 @@ func TestMqttSetupErrors(t *testing.T) {
 		"mqtt {\n use other\n topic\n}",
 		"mqtt {\n use other\n payload-from\n}",
 		"mqtt == {\n use other\n}",
+		// without a topic, a block can only configure a named connection
+		"mqtt {\n broker tcp://127.0.0.1:1883\n}",
+		"mqtt {\n use other\n}",
+		"mqtt {\n use other\n payload foo\n}",
+		"mqtt msgtype == 'DISCOVER' {\n name local\n broker tcp://127.0.0.1:1883\n}",
+		"mqtt {\n name local\n broker tcp://127.0.0.1:1883\n payload foo\n}",
+		"mqtt {\n name local\n broker tcp://127.0.0.1:1883\n payload-from echo foo\n}",
 	} {
 		_, err := makeMqttPlugin(t, input)
 		assert.Error(t, err, input)
+	}
+}
+
+func TestMqttSetupWithoutTopicOrPayload(t *testing.T) {
+	m, err := makeMqttPlugin(t, `
+	mqtt {
+		name local
+		broker tcp://127.0.0.1:1883
+	}
+
+	mqtt {
+		use local
+		topic some/topic
+	}`)
+	require.NoError(t, err)
+	require.Len(t, m.configs, 2)
+
+	// the first block only configures the connection
+	assert.Nil(t, m.configs[0].topic)
+
+	// the second one publishes an empty payload
+	ctx, _ := test.WithReplacer(context.Background())
+	require.NotNil(t, m.configs[1].payload)
+	payload, err := m.configs[1].payload(ctx, nil, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "", payload)
+}
+
+// TestMqttProvisionValidates checks that JSON configs are checked like
+// Dhcpfile ones.
+func TestMqttProvisionValidates(t *testing.T) {
+	topic := "some/topic"
+
+	for name, pub := range map[string]PublishConfig{
+		"no connection":           {Topic: &topic},
+		"no topic":                {Name: "local", Connection: &ConnectionConfig{}, Condition: "msgtype == 'DISCOVER'"},
+		"unnamed connection only": {Connection: &ConnectionConfig{}},
+	} {
+		_, err := test.Provision(t, &mqttPlugin{Publish: []PublishConfig{pub}})
+		assert.Error(t, err, name)
 	}
 }

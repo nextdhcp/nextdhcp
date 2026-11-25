@@ -46,6 +46,7 @@ type (
 		configs []*mqttConfig
 		l       log.Logger
 		next    plugin.Handler
+		wg      sync.WaitGroup // used in tests to wait until all messages are published
 	}
 )
 
@@ -63,7 +64,16 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 	}
 
 	for _, cfg := range m.configs {
+		// a configuration without topic only configures a connection for
+		// other configurations to use
+		if cfg.topic == nil {
+			continue
+		}
+
+		m.wg.Add(1)
 		go func(cfg *mqttConfig) {
+			defer m.wg.Done()
+
 			match, err := cfg.Match(ctx, req)
 			if err != nil {
 				l.Errorf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
@@ -85,7 +95,7 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 
 				payload, err := cfg.payload(ctx, req, nil)
 				if err != nil {
-					l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
+					l.Errorf("failed to get MQTT payload for %q: %s", cfg.name, err.Error())
 					return
 				}
 
