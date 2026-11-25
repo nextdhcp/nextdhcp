@@ -3,7 +3,6 @@ package dhcpmain
 import (
 	"flag"
 	"io"
-	"log"
 	"os"
 
 	"github.com/caddyserver/caddy/v2"
@@ -21,13 +20,15 @@ func Run() {
 	flag.Parse()
 	caddy.TrapSignals()
 
+	// Caddy's logger also logs what the standard library's logger does, but
+	// at the info level, so log errors with it directly
 	cfgJSON, err := loadConfig()
 	if err != nil {
-		log.Fatal(err)
+		caddy.Log().Fatal(err.Error())
 	}
 
 	if err := caddy.Load(cfgJSON, true); err != nil {
-		log.Fatal(err)
+		caddy.Log().Fatal(err.Error())
 	}
 
 	// The process exits once a signal stops it (see caddy.TrapSignals)
@@ -45,7 +46,7 @@ func loadConfig() ([]byte, error) {
 		"filename": filename,
 	})
 	for _, w := range warnings {
-		log.Printf("[WARNING] %s", w.String())
+		caddy.Log().Warn(w.String())
 	}
 
 	return cfgJSON, err
