@@ -85,6 +85,9 @@ func (p *Plugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 					return err
 				}
 			}
+		} else if c.NextArg() {
+			// boot files are only configured in a block
+			return c.ArgErr()
 		}
 	}
 

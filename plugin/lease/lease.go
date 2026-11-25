@@ -2,6 +2,8 @@ package lease
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -73,14 +75,35 @@ func (p *leaseTimePlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 			return c.SyntaxErr("a duration, like 1h or 1d")
 		}
 
+		if !leaseTimeInRange(d) {
+			return c.Errf("lease time %s out of range", c.Val())
+		}
+
 		p.LeaseTime = caddy.Duration(d)
 	}
 
 	return nil
 }
 
+// Validate checks the lease time of a JSON config like UnmarshalCaddyfile
+// checks the one of a Dhcpfile.
+func (p *leaseTimePlugin) Validate() error {
+	if d := time.Duration(p.LeaseTime); !leaseTimeInRange(d) {
+		return fmt.Errorf("lease time %s out of range", d)
+	}
+
+	return nil
+}
+
+// leaseTimeInRange reports whether d fits into the lease time option, which
+// holds an unsigned 32 bit number of seconds.
+func leaseTimeInRange(d time.Duration) bool {
+	return d >= 0 && d/time.Second <= math.MaxUint32
+}
+
 // Interface guards
 var (
+	_ caddy.Validator       = (*leaseTimePlugin)(nil)
 	_ caddyfile.Unmarshaler = (*leaseTimePlugin)(nil)
 	_ plugin.Middleware     = (*leaseTimePlugin)(nil)
 )

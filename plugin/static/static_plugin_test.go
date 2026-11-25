@@ -93,3 +93,29 @@ func TestStaticServeDHCP(t *testing.T) {
 		assert.True(t, res.YourIPAddr == nil || res.YourIPAddr.IsUnspecified())
 	})
 }
+
+// TestStaticMACCase checks that clients are matched whatever the case of the
+// configured MAC address.
+func TestStaticMACCase(t *testing.T) {
+	p, err := makeStaticPlugin(t, "static 00:AA:BB:CC:DD:EE 127.0.0.50")
+	require.NoError(t, err)
+	p.Wrap(test.ErrorHandler)
+
+	req, err := dhcpv4.NewDiscovery(net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee})
+	require.NoError(t, err)
+	res, err := dhcpv4.NewReplyFromRequest(req)
+	require.NoError(t, err)
+
+	require.NoError(t, p.ServeDHCP(context.Background(), req, res))
+	assert.Equal(t, "127.0.0.50", res.YourIPAddr.String())
+
+	// a client can't be configured twice, in different cases
+	_, err = makeStaticPlugin(t, "static 00:AA:BB:CC:DD:EE 127.0.0.50\nstatic 00:aa:bb:cc:dd:ee 127.0.0.51")
+	assert.Error(t, err)
+
+	_, err = test.Provision(t, &Plugin{Addresses: map[string]net.IP{
+		"00:AA:BB:CC:DD:EE": {127, 0, 0, 50},
+		"00:aa:bb:cc:dd:ee": {127, 0, 0, 51},
+	}})
+	assert.Error(t, err)
+}

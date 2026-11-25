@@ -33,9 +33,13 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 
 	s.L = ctx.Logger().Sugar()
 
+	// ServeDHCP looks clients up by the canonical (lower case) form of their
+	// MAC address, so store the addresses by that form
+	addresses := make(map[string]net.IP, len(s.Addresses))
 	clients := make(map[string]string, len(s.Addresses))
 	for key, ip := range s.Addresses {
-		if _, err := net.ParseMAC(key); err != nil {
+		mac, err := net.ParseMAC(key)
+		if err != nil {
 			return fmt.Errorf("invalid MAC address %s: %w", key, err)
 		}
 
@@ -43,12 +47,19 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("no IP address configured for client %s", key)
 		}
 
+		if _, ok := addresses[mac.String()]; ok {
+			return fmt.Errorf("static IP address has already been configured for client %s", mac)
+		}
+
 		if other, ok := clients[ip.String()]; ok {
 			return fmt.Errorf("IP %s already used for client %s", ip, other)
 		}
 
+		addresses[mac.String()] = ip
 		clients[ip.String()] = key
 	}
+
+	s.Addresses = addresses
 
 	return nil
 }
@@ -75,10 +86,11 @@ func (s *Plugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 			return c.ArgErr()
 		}
 
-		key := c.Val()
-		if _, err := net.ParseMAC(key); err != nil {
+		mac, err := net.ParseMAC(c.Val())
+		if err != nil {
 			return c.ArgErr()
 		}
+		key := mac.String()
 
 		if !c.NextArg() {
 			return c.ArgErr()

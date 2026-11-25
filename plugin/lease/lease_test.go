@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
@@ -39,6 +40,8 @@ func TestLeaseSetup(t *testing.T) {
 		"lease 1.5d":               36 * time.Hour,
 		"lease 1h\nlease 2h":       2 * time.Hour,
 		"lease 1d12h\nlease 1d13h": 37 * time.Hour,
+		"lease 0s":                 0,
+		"lease 49710d":             49710 * 24 * time.Hour, // still fits into 32 bits of seconds
 	}
 
 	for input, expected := range durations {
@@ -52,10 +55,24 @@ func TestLeaseSetup(t *testing.T) {
 		"lease 1y",
 		"lease forever",
 		"lease 1",
+		// out of the range of the lease time option
+		"lease -1h",
+		"lease 49711d",
 	} {
 		_, err := makeLeasePlugin(t, input)
 		assert.Error(t, err, input)
 	}
+}
+
+// TestLeaseValidate checks that JSON configs are checked like Dhcpfile ones.
+func TestLeaseValidate(t *testing.T) {
+	for _, d := range []time.Duration{-time.Hour, 49711 * 24 * time.Hour} {
+		_, err := test.Provision(t, &leaseTimePlugin{LeaseTime: caddy.Duration(d)})
+		assert.Error(t, err, d)
+	}
+
+	_, err := test.Provision(t, &leaseTimePlugin{LeaseTime: caddy.Duration(time.Hour)})
+	assert.NoError(t, err)
 }
 
 func TestLeaseServeDHCP(t *testing.T) {

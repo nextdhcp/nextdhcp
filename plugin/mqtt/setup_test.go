@@ -120,6 +120,9 @@ func TestMqttSetupErrors(t *testing.T) {
 		"mqtt msgtype == 'DISCOVER' {\n name local\n broker tcp://127.0.0.1:1883\n}",
 		"mqtt {\n name local\n broker tcp://127.0.0.1:1883\n payload foo\n}",
 		"mqtt {\n name local\n broker tcp://127.0.0.1:1883\n payload-from echo foo\n}",
+		// unknown properties
+		"mqtt {\n broker tcp://127.0.0.1:1883\n pasword secret\n topic some/topic\n}",
+		"mqtt {\n broker tcp://127.0.0.1:1883\n topic some/topic extra\n}",
 	} {
 		_, err := makeMqttPlugin(t, input)
 		assert.Error(t, err, input)

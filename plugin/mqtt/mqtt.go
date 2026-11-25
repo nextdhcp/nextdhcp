@@ -2,6 +2,7 @@ package mqtt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -26,8 +27,9 @@ type (
 		cleanSession bool
 		qos          int
 
-		l sync.Mutex
-		c mqtt.Client
+		l      sync.Mutex
+		c      mqtt.Client
+		closed bool // set by Cleanup, after which no connection is opened
 	}
 
 	mqttConfig struct {
@@ -125,6 +127,10 @@ func (m *mqttPlugin) getClient(cfg *mqttConfig) (mqtt.Client, int, error) {
 
 	cfg.conn.l.Lock()
 	defer cfg.conn.l.Unlock()
+
+	if cfg.conn.closed {
+		return nil, 0, errors.New("MQTT connection already closed")
+	}
 
 	if cfg.conn.c == nil {
 		if err := cfg.conn.open(m.l); err != nil {

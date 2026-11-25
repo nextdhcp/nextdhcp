@@ -160,3 +160,17 @@ func TestMqttPublish(t *testing.T) {
 	assert.Empty(t, broker.published)
 	assert.Equal(t, int32(1), broker.conns.Load())
 }
+
+// TestMqttNoConnectionAfterCleanup checks that a message that is still being
+// published when the plugin is cleaned up doesn't open a new connection.
+func TestMqttNoConnectionAfterCleanup(t *testing.T) {
+	broker := newFakeBroker(t)
+
+	m, err := makeMqttPlugin(t, fmt.Sprintf("mqtt {\n broker %s\n topic some/topic\n}", broker.url()))
+	require.NoError(t, err)
+	require.NoError(t, m.Cleanup())
+
+	_, _, err = m.getClient(m.configs[0])
+	assert.Error(t, err)
+	assert.Equal(t, int32(0), broker.conns.Load())
+}

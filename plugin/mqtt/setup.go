@@ -153,6 +153,9 @@ func (m *mqttPlugin) Cleanup() error {
 		}
 
 		cfg.conn.l.Lock()
+		// keep messages still being published from opening a new
+		// connection that nothing would close
+		cfg.conn.closed = true
 		if cfg.conn.c != nil {
 			cfg.conn.c.Disconnect(250)
 			cfg.conn.c = nil
@@ -234,6 +237,9 @@ func (m *mqttPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 
 				cfg.PayloadFrom = cmd
 				cfg.Payload = nil
+
+			default:
+				return c.Errf("unknown mqtt property %q", c.Val())
 			}
 		}
 
