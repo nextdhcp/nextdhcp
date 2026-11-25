@@ -11,7 +11,7 @@ require (
 	github.com/gotify/go-api-client/v2 v2.0.4
 	github.com/insomniacslk/dhcp v0.0.0-20261014062924-c6bb46ad3f3a
 	github.com/mattn/go-isatty v0.0.24
-	github.com/mdlayher/raw v0.1.0
+	github.com/mdlayher/packet v1.2.0
 	github.com/ppacher/glua-loop v0.0.0-20190823064734-05c43452ea18
 	github.com/ppacher/webthings-mqtt-gateway v0.0.0-20190827095024-c29a6f0aa947
 	github.com/stretchr/testify v1.12.1
@@ -53,7 +53,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
-	github.com/mdlayher/packet v1.2.0 // indirect
 	github.com/mdlayher/socket v0.8.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

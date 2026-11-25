@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/mdlayher/raw" //nolint:staticcheck // SA1019 ignore this!
+	"github.com/mdlayher/packet"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	interfaces "github.com/nextdhcp/nextdhcp/core/utils/iface"
 )
@@ -16,7 +17,7 @@ var (
 	rawListenPacket = func(iface *net.Interface) (net.PacketConn, error) {
 		// TODO(ppacher): use the BPF filter support to drop not-DHCP related
 		// packets
-		return raw.ListenPacket(iface, 0x800, nil)
+		return packet.Listen(iface, packet.Raw, 0x800, nil)
 	}
 
 	udpListenPacket = func(ip net.IP, port int) (net.PacketConn, error) {
@@ -46,6 +47,7 @@ func ListenDHCP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, 
 
 	r, err := rawListenPacket(iface)
 	if err != nil {
+		_ = udp.Close()
 		return nil, err
 	}
 
@@ -66,17 +68,20 @@ func ListenDHCP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, 
 // DHCPConn implements net.PacketConn but utilizes a standard UDP and
 // and AF_PACKET socket
 type DHCPConn struct {
-	udp   net.PacketConn // used for routable unicasts
-	raw   net.PacketConn // used for directed (w/o ARP) unicasts
-	iface *net.Interface // the interface the raw PacketConn is bound to
-	ip    net.IP         // the listening IP for the udp PacketConn
-	wg    sync.WaitGroup
-	l     log.Logger
+	udp    net.PacketConn // used for routable unicasts
+	raw    net.PacketConn // used for directed (w/o ARP) unicasts
+	iface  *net.Interface // the interface the raw PacketConn is bound to
+	ip     net.IP         // the listening IP for the udp PacketConn
+	wg     sync.WaitGroup
+	closed atomic.Bool // set once Close has been called
+	l      log.Logger
 }
 
 // Close will close both the UDP and the AF_PACKET socket and
 // will return the first error encountered
 func (p *DHCPConn) Close() error {
+	p.closed.Store(true)
+
 	firstErr := p.udp.Close()
 
 	secondErr := p.raw.Close()
@@ -116,6 +121,13 @@ func (p *DHCPConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		}
 
 		if err != nil {
+			if p.closed.Load() {
+				// The AF_PACKET socket reports reads on a closed socket as
+				// "use of closed file" or EBADF. Report net.ErrClosed instead,
+				// like other net.PacketConn implementations do.
+				return 0, nil, &net.OpError{Op: "read", Net: "packet", Source: p.raw.LocalAddr(), Err: net.ErrClosed}
+			}
+
 			return 0, nil, err
 		}
 	}
@@ -130,12 +142,13 @@ func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		srcMAC := p.iface.HardwareAddr
 		srcIP := p.ip
 
-		if r.Local.MAC != nil {
+		// r.Local is usually the destination of the request being answered.
+		// Only reply from it if the request was sent to our IP: it may also
+		// be a broadcast address, or the address of another host or of
+		// another server on the same interface for frames that were not
+		// meant for us.
+		if r.Local.IP.Equal(p.ip) && isUnicastMAC(r.Local.MAC) {
 			srcMAC = r.Local.MAC
-		}
-
-		if r.Local.IP != nil {
-			srcIP = r.Local.IP
 		}
 
 		p.l.Debugf("[socket] sending directed (raw) unicast %s (%s) -> %s (%s)", srcIP, srcMAC, r.IP, r.MAC)
@@ -146,13 +159,25 @@ func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 			return 0, err
 		}
 
-		return p.raw.WriteTo(payload, &raw.Addr{
+		// The raw socket reports the length of the whole frame; report how
+		// much of b was sent instead.
+		if _, err := p.raw.WriteTo(payload, &packet.Addr{
 			HardwareAddr: r.MAC,
-		})
+		}); err != nil {
+			return 0, err
+		}
+
+		return len(b), nil
 	}
 
 	p.l.Debugf("[socket] sending (routed) UDP response %s -> %s", p.udp.LocalAddr(), addr)
 	return p.udp.WriteTo(b, addr)
+}
+
+// isUnicastMAC reports whether mac is set and is not a broadcast or
+// multicast address.
+func isUnicastMAC(mac net.HardwareAddr) bool {
+	return len(mac) > 0 && mac[0]&0x01 == 0
 }
 
 // SetDeadline implements the PacketConn interface
@@ -184,6 +209,8 @@ func (p *DHCPConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (p *DHCPConn) discardUDP() {
+	defer p.wg.Done()
+
 	buf := make([]byte, 1024)
 
 	for {

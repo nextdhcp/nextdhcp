@@ -1,4 +1,3 @@
-
 # NextDHCP
 
 <img src="./assets/nextdhcp-logo.svg" align="right" width="200" alt="NextDHCP">
@@ -6,43 +5,34 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/nextdhcp/nextdhcp)](https://goreportcard.com/report/github.com/nextdhcp/nextdhcp)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/nextdhcp/nextdhcp)](https://github.com/nextdhcp/nextdhcp/releases)
 
-A DHCP server that chains middlewares. Similar to Caddy and CoreDNS
-
-NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's based on the [Caddy server framework](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/). 
+NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's based on the [Caddy server framework](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/). It is still in early alpha and may not yet be considered stable.
 
 <hr color="#6ad7e5">
 
 ## Getting Started
 
-The following instructions will get you a local copy of the project for development and testing purposes. For production deployments please refer to the documentation hosted on the project website [nextdhcp.io](https://nextdhcp.io). Note that this project is still in early alpha and may not yet be considered stable.
-
 ### Prerequisites
 
-In order to install, hack and test NextDHCP you need a working [Go](https://golang.org) environment. Since this project already adapted go modules you should use Go 1.26 or newer. For testing it is also recommended to have
-at least one virtual machine available.
+NextDHCP runs on Linux only: it talks to DHCP clients through AF_PACKET sockets, which other operating systems don't have. You can still work on the code elsewhere, since every package except the `nextdhcp` command itself builds on any system, and build the server for Linux with `GOOS=linux`.
+
+To install, build and test NextDHCP you need [Go](https://go.dev) 1.26 or newer. For testing it is also recommended to have at least one virtual machine available.
 
 ### Installing
 
-If you just want to install NextDHCP without planning to hack around in it's source code the following command should be enough to install it
+To install NextDHCP without working on its source code, run:
 
 ```
-go get github.com/nextdhcp/nextdhcp
+go install github.com/nextdhcp/nextdhcp@latest
 ```
 
-This will install the NextDHCP binary into `$GOPATH/bin`. If you want to start hacking on the project follow the steps below:
+This installs the NextDHCP binary into `$GOBIN`, or into `$GOPATH/bin` (`~/go/bin` by default) if `GOBIN` isn't set.
 
-First clone the repository to a folder of your choice
+To work on NextDHCP, clone the repository and build it:
 
 ```
 git clone https://github.com/nextdhcp/nextdhcp
-```
-
-Finally, enter the directory and build NextDHCP
-
-```
 cd nextdhcp
-go generate ./...
-go build -o nextdhcp ./
+go build -o nextdhcp .
 ```
 
 ### Usage
@@ -62,7 +52,7 @@ Or, if you need to serve multiple subnets or multiple network interfaces you can
 
 ```
 10.0.0.10 - 10.0.0.20 {
-    lease 1d
+    lease 24h
 }
 
 192.168.0.1/24 {
@@ -73,13 +63,11 @@ Or, if you need to serve multiple subnets or multiple network interfaces you can
 }
 ```
 
-Place your configuration into a file called `Dhcpfile` and  start NextDHCP as root:
+Place your configuration into a file called `Dhcpfile` and start NextDHCP as root:
 
 ```
-sudo ./nextdhcp 
+sudo ./nextdhcp
 ```
-
-For a list of supported plugins please checkout the content of the [*plugin*](./plugin) directory.
 
 ## Plugins
 
@@ -88,16 +76,13 @@ For a list of supported plugins please checkout the content of the [*plugin*](./
 - [**ifname**](./plugin/ifname) - sets the network interface a given subnet should be served on
 - [**lease**](./plugin/lease) - configures the lease time
 - [**nextserver**](./plugin/nextserver) - advertise a TFTP boot server
+- [**bootfile**](./plugin/bootfile) - set the boot file for network-booting (PXE) clients, separately for BIOS and UEFI
 - [**option**](./plugin/option) - configure any DHCP options
 - [**ranges**](./plugin/ranges) - lease IP addresses from pre-defined IP ranges
 - [**servername**](./plugin/servername) - sets the server hostname on DHCP messages
 - [**static**](./plugin/static) - lease static IP addresses to clients based on their MAC address
 - [**gotify**](./plugin/gotify) - send push notifications for IP address leases and DHCP requests via gotify
 - [**mqtt**](./plugin/mqtt) - extract and publish DHCP request/response information to MQTT
-
-## Versioning
-
-We use [SemVer](http://semver.org/) for versioning. For all versions available, see the [tags on this repository](https://github.com/nextdhcp/nextdhcp/tags) or checkout the [release page](https://github.com/nextdhcp/nextdhcp/releases).
 
 ## Authors
 
