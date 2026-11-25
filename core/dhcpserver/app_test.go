@@ -2,7 +2,9 @@ package dhcpserver_test
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -215,5 +217,38 @@ lo {
 	case <-first.closed:
 	default:
 		t.Error("the server that started wasn't stopped")
+	}
+}
+
+// TestSharedDatabaseFile checks that two servers configured with the same
+// bolt database file fail to start instead of waiting forever for its lock.
+func TestSharedDatabaseFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "leases.db")
+
+	cfg, _, err := adapt(t, fmt.Sprintf(`
+127.0.0.1/8 {
+	database bolt {
+		file %s
+		timeout 100ms
+	}
+}
+
+lo {
+	database bolt {
+		file %s
+		timeout 100ms
+	}
+}
+`, file, file))
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() { done <- caddy.Validate(cfg) }()
+
+	select {
+	case err := <-done:
+		assert.ErrorContains(t, err, "locked")
+	case <-time.After(10 * time.Second):
+		t.Fatal("provisioning the servers doesn't return")
 	}
 }

@@ -41,10 +41,21 @@ func TestReadmeExamples(t *testing.T) {
 				cfg, app, err := adapt(t, dhcpfile)
 				require.NoError(t, err, dhcpfile)
 
-				// provision the config, with lease databases that don't need
-				// any files
+				// Provision the config. Bolt databases keep their options but
+				// get a file in a temporary directory, and servers without a
+				// database get a memory one instead of a file in the working
+				// directory.
 				for _, srv := range app.Servers {
-					srv.DatabaseConfig = &dhcpserver.DatabaseConfig{Driver: "memory"}
+					switch db := srv.DatabaseConfig; {
+					case db == nil:
+						srv.DatabaseConfig = &dhcpserver.DatabaseConfig{Driver: "memory"}
+					case db.Driver == "bolt":
+						for _, key := range []string{"__args__", "file"} {
+							if files := db.Options[key]; len(files) > 0 {
+								files[0] = filepath.Join(t.TempDir(), "leases.db")
+							}
+						}
+					}
 				}
 				cfg.AppsRaw["dhcp"] = caddyconfig.JSON(app, nil)
 
