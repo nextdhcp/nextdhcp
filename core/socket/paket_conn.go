@@ -184,6 +184,8 @@ func (p *DHCPConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (p *DHCPConn) discardUDP() {
+	defer p.wg.Done()
+
 	buf := make([]byte, 1024)
 
 	for {
