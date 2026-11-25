@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/mdlayher/raw" //nolint:staticcheck // SA1019 ignore this!
+	"github.com/mdlayher/packet"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	interfaces "github.com/nextdhcp/nextdhcp/core/utils/iface"
 )
@@ -16,7 +16,7 @@ var (
 	rawListenPacket = func(iface *net.Interface) (net.PacketConn, error) {
 		// TODO(ppacher): use the BPF filter support to drop not-DHCP related
 		// packets
-		return raw.ListenPacket(iface, 0x800, nil)
+		return packet.Listen(iface, packet.Raw, 0x800, nil)
 	}
 
 	udpListenPacket = func(ip net.IP, port int) (net.PacketConn, error) {
@@ -146,7 +146,7 @@ func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 			return 0, err
 		}
 
-		return p.raw.WriteTo(payload, &raw.Addr{
+		return p.raw.WriteTo(payload, &packet.Addr{
 			HardwareAddr: r.MAC,
 		})
 	}

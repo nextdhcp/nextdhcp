@@ -306,8 +306,6 @@ github.com/mattn/go-tty v0.0.0-20180219170247-931426f7535a/go.mod h1:XPvLUNfbS4f
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/mdlayher/packet v1.2.0 h1:SX7/oY0+nkKo7p4Sv30+TIc3YuWgvDEf0eucTXRyPqk=
 github.com/mdlayher/packet v1.2.0/go.mod h1:UtYVnQt+Zj6UD0F89HfzkqGXaYqys1NwkrS86wlLCv4=
-github.com/mdlayher/raw v0.1.0 h1:K4PFMVy+AFsp0Zdlrts7yNhxc/uXoPVHi9RzRvtZF2Y=
-github.com/mdlayher/raw v0.1.0/go.mod h1:yXnxvs6c0XoF/aK52/H5PjsVHmWBCFfZUfoh/Y5s9Sg=
 github.com/mdlayher/socket v0.8.0 h1:1lIVvHAs3sT623kPkPDa+I0nLVusskwnpWzp6ZUcNyc=
 github.com/mdlayher/socket v0.8.0/go.mod h1:EhNb63aXqexVoTJDblxvDOSuIGIJinC4H5ZktnaJ6Rk=
 github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
