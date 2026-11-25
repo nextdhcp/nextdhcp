@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/nextdhcp/nextdhcp)](https://goreportcard.com/report/github.com/nextdhcp/nextdhcp)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/nextdhcp/nextdhcp)](https://github.com/nextdhcp/nextdhcp/releases)
 
-NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's based on the [Caddy server framework](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/). It is still in early alpha and may not yet be considered stable.
+NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's built on [Caddy 2](https://github.com/caddyserver/caddy/) and is thus similar to [Caddy](https://caddyserver.com/) and [CoreDNS](https://coredns.io/): NextDHCP is a Caddy app, the Dhcpfile is adapted to Caddy's JSON config, and each plugin is a Caddy module. It is still in early alpha and may not yet be considered stable.
 
 <hr color="#6ad7e5">
 

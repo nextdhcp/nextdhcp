@@ -25,6 +25,9 @@ type (
 	// and sends notifications. It implements the plugin.Handler
 	// interface
 	gotifyPlugin struct {
+		// Notifications are the notifications to send, in order.
+		Notifications []NotificationConfig `json:"notifications,omitempty"`
+
 		next          plugin.Handler
 		notifications []*notification
 		l             log.Logger

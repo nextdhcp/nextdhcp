@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/apex/log"
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	dhcpLog "github.com/nextdhcp/nextdhcp/core/log"
+	"go.uber.org/zap"
 )
 
 // Database implements lease.Database
@@ -17,12 +17,18 @@ type Database struct {
 	l     dhcpLog.Logger
 }
 
-// NewDatabase creates a new database that uses store for persistence
+// NewDatabase creates a new database that uses store for persistence. It
+// discards the errors it logs until a logger is set with SetLogger.
 func NewDatabase(store LeaseStorage) *Database {
 	return &Database{
 		store: store,
-		l:     log.Log,
+		l:     zap.NewNop().Sugar(),
 	}
+}
+
+// SetLogger sets the logger that db logs errors to.
+func (db *Database) SetLogger(l dhcpLog.Logger) {
+	db.l = l
 }
 
 // Leases returns all IP address leases

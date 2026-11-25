@@ -4,10 +4,26 @@ import (
 	"context"
 	"testing"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
 )
+
+// makeGotifyPlugin sets up the plugin from input and provisions it, like a
+// server does when it loads the plugin from its JSON config.
+func makeGotifyPlugin(t *testing.T, input string) (*gotifyPlugin, error) {
+	g := new(gotifyPlugin)
+	if err := g.UnmarshalCaddyfile(caddyfile.NewTestDispenser(input)); err != nil {
+		return nil, err
+	}
+
+	m, err := test.Provision(t, g)
+	if err != nil {
+		return nil, err
+	}
+
+	return m.(*gotifyPlugin), nil
+}
 
 func assertNotification(t *testing.T, n *notification, msg, title, srv, token string) {
 	assert.Equal(t, srv, n.srv)
@@ -40,8 +56,7 @@ func TestGotifySetup(t *testing.T) {
 		server http://gotify.com some-app-token
 	}
 	`
-	c := caddy.NewTestController("dhcpv4", input)
-	g, err := makeGotifyPlugin(c)
+	g, err := makeGotifyPlugin(t, input)
 	assert.NoError(t, err)
 	assert.Len(t, g.notifications, 1)
 	assert.NotNil(t, g.notifications[0].Matcher)
@@ -52,56 +67,49 @@ func TestGotifySetup(t *testing.T) {
 	gotify {
 		message	
 	}`
-	c = caddy.NewTestController("dhcpv4", input)
-	_, err = makeGotifyPlugin(c)
+	_, err = makeGotifyPlugin(t, input)
 	assert.Error(t, err)
 
 	input = `
 	gotify {
 		title	
 	}`
-	c = caddy.NewTestController("dhcpv4", input)
-	_, err = makeGotifyPlugin(c)
+	_, err = makeGotifyPlugin(t, input)
 	assert.Error(t, err)
 
 	input = `
 	gotify {
 		server	
 	}`
-	c = caddy.NewTestController("dhcpv4", input)
-	_, err = makeGotifyPlugin(c)
+	_, err = makeGotifyPlugin(t, input)
 	assert.Error(t, err)
 
 	input = `
 	gotify {
 		server http://gotifiy.com
 	}`
-	c = caddy.NewTestController("dhcpv4", input)
-	_, err = makeGotifyPlugin(c)
+	_, err = makeGotifyPlugin(t, input)
 	assert.Error(t, err)
 
 	input = `
 	gotify {
 		unknown-key	
 	}`
-	c = caddy.NewTestController("dhcpv4", input)
-	_, err = makeGotifyPlugin(c)
+	_, err = makeGotifyPlugin(t, input)
 	assert.Error(t, err)
 
 	input = `
 	gotify {
 		server http://gotify.com some-app-token	
 	}`
-	c = caddy.NewTestController("dhcpv4", input)
-	_, err = makeGotifyPlugin(c)
+	_, err = makeGotifyPlugin(t, input)
 	assert.NoError(t, err)
 
 	input = `
 	gotify msgtype == 'REQUEST' {
 		title some-title
 	}`
-	c = caddy.NewTestController("dhcpv4", input)
-	_, err = makeGotifyPlugin(c)
+	_, err = makeGotifyPlugin(t, input)
 	assert.Error(t, err) // msg must be set if condition is used
 
 	// server and token configuration should propergate to notifications
@@ -123,8 +131,7 @@ func TestGotifySetup(t *testing.T) {
 		message "another message"
 	}
 	`
-	c = caddy.NewTestController("dhcpv4", input)
-	g, err = makeGotifyPlugin(c)
+	g, err = makeGotifyPlugin(t, input)
 	assert.NoError(t, err)
 	assert.Len(t, g.notifications, 4)
 	assertNotification(t, g.notifications[1], "some message", "", "http://gotify.com", "some-app-token")

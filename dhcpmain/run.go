@@ -2,28 +2,18 @@ package dhcpmain
 
 import (
 	"flag"
+	"io"
 	"log"
 	"os"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 )
 
-var (
-	conf       string
-	serverType = "dhcpv4"
-)
+var conf string
 
 func init() {
-	caddy.DefaultConfigFile = "Dhcpfile"
-	caddy.Quiet = false
-
-	flag.StringVar(&conf, "conf", "", "Dhcpfile to load (default \""+caddy.DefaultConfigFile+"\")")
-
-	caddy.RegisterCaddyfileLoader("flag", caddy.LoaderFunc(configLoader))
-	caddy.SetDefaultCaddyfileLoader("default", caddy.LoaderFunc(defaultLoader))
-
-	caddy.AppName = "NextDHCP"
-	caddy.AppVersion = "v0.1.0"
+	flag.StringVar(&conf, "conf", "", "Dhcpfile to load (default \""+dhcpserver.DefaultConfigFile+"\")")
 }
 
 // Run start NextDHCP and blocks until the server stopped
@@ -31,41 +21,53 @@ func Run() {
 	flag.Parse()
 	caddy.TrapSignals()
 
-	dhcpfile, err := caddy.LoadCaddyfile(serverType)
+	cfgJSON, err := loadConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	instance, err := caddy.Start(dhcpfile)
-	if err != nil {
+	if err := caddy.Load(cfgJSON, true); err != nil {
 		log.Fatal(err)
 	}
 
-	instance.Wait()
+	// The process exits once a signal stops it (see caddy.TrapSignals)
+	select {}
 }
 
-func configLoader(serverType string) (caddy.Input, error) {
-	if conf == "" {
-		return nil, nil
-	}
-
-	if conf == "stdin" || conf == "-" {
-		return caddy.CaddyfileFromPipe(os.Stdin, serverType)
-	}
-
-	file, err := os.ReadFile(conf)
+// loadConfig reads the Dhcpfile and adapts it to a Caddy JSON config.
+func loadConfig() ([]byte, error) {
+	filename, body, err := readDhcpfile()
 	if err != nil {
 		return nil, err
 	}
 
-	return caddy.CaddyfileInput{
-		Contents:       file,
-		Filepath:       conf,
-		ServerTypeName: serverType,
-	}, nil
+	cfgJSON, warnings, err := dhcpserver.Adapter{}.Adapt(body, map[string]any{
+		"filename": filename,
+	})
+	for _, w := range warnings {
+		log.Printf("[WARNING] %s", w.String())
+	}
+
+	return cfgJSON, err
 }
 
-func defaultLoader(serverType string) (caddy.Input, error) {
-	conf = caddy.DefaultConfigFile
-	return configLoader(serverType)
+func readDhcpfile() (string, []byte, error) {
+	if conf == "stdin" || conf == "-" {
+		// Like Caddy v1, read standard input only if it isn't a terminal
+		// and use the default Dhcpfile otherwise.
+		if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
+			body, err := io.ReadAll(os.Stdin)
+			return os.Stdin.Name(), body, err
+		}
+
+		conf = ""
+	}
+
+	if conf == "" {
+		conf = dhcpserver.DefaultConfigFile
+	}
+
+	body, err := os.ReadFile(conf)
+
+	return conf, body, err
 }

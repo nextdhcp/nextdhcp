@@ -1,10 +1,8 @@
 package ifname
 
 import (
-	"net"
 	"testing"
 
-	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
 )
@@ -15,11 +13,11 @@ func TestInterfacePlugin(t *testing.T) {
 
 		// reset the interface so we can check if setupInterface
 		// configures it correctly
-		cfg := dhcpserver.GetConfig(c)
-		cfg.Interface = net.Interface{}
+		cfg := c.Server
+		cfg.Interface = ""
 
 		assert.NoError(t, setupInterface(c))
-		assert.Equal(t, "lo", cfg.Interface.Name)
+		assert.Equal(t, "lo", cfg.Interface)
 	})
 
 	t.Run("invalid interface", func(t *testing.T) {

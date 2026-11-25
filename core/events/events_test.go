@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,9 +14,9 @@ import (
 var eventHooks = &sync.Map{}
 
 func init() {
-	caddy.RegisterEventHook("event-testing-hook", func(name caddy.EventName, info interface{}) error {
+	RegisterEventHook("event-testing-hook", func(name EventName, info interface{}) error {
 		eventHooks.Range(func(_, value interface{}) bool {
-			err := value.(caddy.EventHook)(name, info)
+			err := value.(EventHook)(name, info)
 			if err != nil {
 				return false
 			}
@@ -28,7 +27,7 @@ func init() {
 	})
 }
 
-func registerTestingHook(name string, hook caddy.EventHook) {
+func registerTestingHook(name string, hook EventHook) {
 	eventHooks.LoadOrStore(name, hook)
 }
 
@@ -48,7 +47,7 @@ func TestEmitLeaseEvent(t *testing.T) {
 	}
 
 	firedLeaseCreated := false
-	registerTestingHook("test-emit-lease-event", func(name caddy.EventName, info interface{}) error {
+	registerTestingHook("test-emit-lease-event", func(name EventName, info interface{}) error {
 		firedLeaseCreated = true
 		assert.Equal(t, EventLeaseCreated, string(name))
 
@@ -66,7 +65,7 @@ func TestEmitLeaseEvent(t *testing.T) {
 
 func TestEmitLeaseEvent_invalid_name(t *testing.T) {
 	eventFired := false
-	registerTestingHook("test-emit-lease-event-invalid-name", func(name caddy.EventName, info interface{}) error {
+	registerTestingHook("test-emit-lease-event-invalid-name", func(name EventName, info interface{}) error {
 		eventFired = true
 		return nil
 	})
@@ -79,18 +78,18 @@ func TestEmitLeaseEvent_invalid_name(t *testing.T) {
 
 func TestRegisterLeaseEventHook(t *testing.T) {
 	called := false
-	RegisterLeaseEventHook("test-register-hook", EventLeaseCreated, func(e caddy.EventName, l *lease.Lease) error {
+	RegisterLeaseEventHook("test-register-hook", EventLeaseCreated, func(e EventName, l *lease.Lease) error {
 		called = true
 		return nil
 	})
 
-	caddy.EmitEvent("some-other-event", nil)
+	EmitEvent("some-other-event", nil)
 	assert.False(t, called, "should have been filtered")
 
-	caddy.EmitEvent(EventLeaseExpired, &lease.Lease{})
+	EmitEvent(EventLeaseExpired, &lease.Lease{})
 	assert.False(t, called, "should have been filtered")
 
-	caddy.EmitEvent(EventLeaseCreated, &lease.Lease{})
+	EmitEvent(EventLeaseCreated, &lease.Lease{})
 	assert.True(t, called, "should have been emitted")
 }
 

@@ -4,33 +4,66 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/caddyserver/caddy"
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
 func init() {
-	caddy.RegisterPlugin("bootfile", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     setupBootFile,
-	})
+	caddy.RegisterModule(Plugin{})
+	dhcpserver.RegisterHandlerDirective("bootfile", setupBootFile)
 }
 
 // Plugin allows to configure and set arbitrary DHCP
 // options. It implements the plugin.Handler interface
 type Plugin struct {
-	Next     plugin.Handler
-	Bootfile map[BootMode]string
-	L        log.Logger
+	// Bootfile maps the boot modes "bios" and "uefi" to the boot file
+	// clients that boot in that mode get.
+	Bootfile map[BootMode]string `json:"bootfile,omitempty"`
+
+	Next plugin.Handler `json:"-"`
+	L    log.Logger     `json:"-"`
 }
 
-func setupBootFile(c *caddy.Controller) error {
-	p := &Plugin{
-		Bootfile: make(map[BootMode]string),
+// CaddyModule returns the Caddy module information.
+func (Plugin) CaddyModule() caddy.ModuleInfo {
+	return caddy.ModuleInfo{
+		ID:  "dhcp.handlers.bootfile",
+		New: func() caddy.Module { return new(Plugin) },
 	}
+}
+
+// Provision sets up the plugin's logger.
+func (p *Plugin) Provision(ctx caddy.Context) error {
+	if p.Bootfile == nil {
+		p.Bootfile = make(map[BootMode]string)
+	}
+
+	p.L = ctx.Logger().Sugar()
+
+	return nil
+}
+
+// Wrap implements plugin.Middleware.
+func (p *Plugin) Wrap(next plugin.Handler) plugin.Handler {
+	p.Next = next
+	return p
+}
+
+func setupBootFile(h dhcpserver.Helper) (caddy.Module, error) {
+	p := new(Plugin)
+	return p, p.UnmarshalCaddyfile(h.Dispenser)
+}
+
+// UnmarshalCaddyfile sets up the plugin from all bootfile directives of a
+// server block.
+func (p *Plugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
+	p.Bootfile = make(map[BootMode]string)
+
 	for c.Next() {
-		if c.NextBlock() {
+		if c.NextBlock(0) {
 			name := c.Val()
 			values := c.RemainingArgs()
 			if len(values) == 0 {
@@ -41,7 +74,7 @@ func setupBootFile(c *caddy.Controller) error {
 				return err
 			}
 
-			for c.NextBlock() {
+			for c.NextBlock(0) {
 				name = c.Val()
 				values = c.RemainingArgs()
 				if len(values) == 0 {
@@ -55,11 +88,6 @@ func setupBootFile(c *caddy.Controller) error {
 		}
 	}
 
-	dhcpserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
-		p.Next = next
-		return p
-	})
-	p.L = log.GetLogger(c, p)
 	return nil
 }
 
@@ -79,3 +107,10 @@ func (p *Plugin) parseBootFile(name string, values []string) error {
 	}
 	return nil
 }
+
+// Interface guards
+var (
+	_ caddy.Provisioner     = (*Plugin)(nil)
+	_ caddyfile.Unmarshaler = (*Plugin)(nil)
+	_ plugin.Middleware     = (*Plugin)(nil)
+)

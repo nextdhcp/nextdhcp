@@ -40,6 +40,9 @@ type (
 	}
 
 	mqttPlugin struct {
+		// Publish configures the messages to publish, in order.
+		Publish []PublishConfig `json:"publish,omitempty"`
+
 		configs []*mqttConfig
 		l       log.Logger
 		next    plugin.Handler

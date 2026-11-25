@@ -1,19 +1,15 @@
 package database
 
 import (
-	"github.com/caddyserver/caddy"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 )
 
 func init() {
-	caddy.RegisterPlugin("database", caddy.Plugin{
-		ServerType: "dhcpv4",
-		Action:     parseDatabaseDirective,
-	})
+	dhcpserver.RegisterDirective("database", parseDatabaseDirective)
 }
 
-func parseDatabaseDirective(c *caddy.Controller) error {
+func parseDatabaseDirective(c dhcpserver.Helper) error {
 	if !c.Next() {
 		return c.ArgErr()
 	}
@@ -29,22 +25,26 @@ func parseDatabaseDirective(c *caddy.Controller) error {
 		options["__args__"] = remaining
 	}
 
-	for c.NextBlock() {
+	for c.NextBlock(0) {
 		options[c.Val()] = c.RemainingArgs()
 	}
 
-	if c.Next() {
+	// A closing brace that is followed by more tokens on its line doesn't
+	// close the block, so the block is still open
+	if c.Nesting() > 0 || c.Next() {
 		return c.ArgErr()
 	}
 
-	store, err := storage.Open(driverName, options)
-	if err != nil {
-		return err
+	// The database is opened when the server is provisioned; only check
+	// that the driver exists
+	if !storage.IsRegistered(driverName) {
+		return c.Errf("unknown database driver %q", driverName)
 	}
 
-	db := storage.NewDatabase(store)
-
-	dhcpserver.GetConfig(c).Database = db
+	c.Server.DatabaseConfig = &dhcpserver.DatabaseConfig{
+		Driver:  driverName,
+		Options: options,
+	}
 
 	return nil
 }

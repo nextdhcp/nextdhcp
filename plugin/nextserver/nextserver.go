@@ -9,8 +9,11 @@ import (
 )
 
 type nextServerPlugin struct {
-	next       plugin.Handler
-	nextServer net.IP
+	// NextServer is the address of the server clients boot from, set as the
+	// server address (siaddr) of responses.
+	NextServer net.IP `json:"next_server,omitempty"`
+
+	next plugin.Handler
 }
 
 func (*nextServerPlugin) Name() string {
@@ -18,6 +21,6 @@ func (*nextServerPlugin) Name() string {
 }
 
 func (s *nextServerPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
-	res.ServerIPAddr = s.nextServer
+	res.ServerIPAddr = s.NextServer
 	return s.next.ServeDHCP(ctx, req, res)
 }

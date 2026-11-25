@@ -17,9 +17,23 @@ import (
 // Plugin allows to configure and set arbitrary DHCP
 // options. It implements the plugin.Handler interface
 type Plugin struct {
-	Next    plugin.Handler
-	Options map[dhcpv4.OptionCode]dhcpv4.OptionValue
-	L       log.Logger
+	// OptionsRaw are the options to set, in the order they are configured.
+	// An option replaces an earlier option with the same code.
+	OptionsRaw []OptionConfig `json:"options,omitempty"`
+
+	Next    plugin.Handler                           `json:"-"`
+	Options map[dhcpv4.OptionCode]dhcpv4.OptionValue `json:"-"`
+	L       log.Logger                               `json:"-"`
+}
+
+// OptionConfig configures a DHCP option.
+type OptionConfig struct {
+	// Name is the name of the option, like "router", or its code, like
+	// "0x03".
+	Name string `json:"name"`
+
+	// Values are the values of the option.
+	Values []string `json:"values,omitempty"`
 }
 
 // Name implements the plugin.Handler interface and returns "option"

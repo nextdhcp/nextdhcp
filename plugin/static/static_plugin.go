@@ -13,10 +13,13 @@ import (
 // Plugin allows assignment of static IP addresses to clients
 // based on the MAC address. It implements plugin.Handler
 type Plugin struct {
-	Config    *dhcpserver.Config
-	Next      plugin.Handler
-	Addresses map[string]net.IP
-	L         log.Logger
+	// Addresses maps client MAC addresses to the IP addresses they are
+	// leased.
+	Addresses map[string]net.IP `json:"addresses,omitempty"`
+
+	Config *dhcpserver.Server `json:"-"`
+	Next   plugin.Handler     `json:"-"`
+	L      log.Logger         `json:"-"`
 }
 
 // Name returns "static" and implements plugin.Handler

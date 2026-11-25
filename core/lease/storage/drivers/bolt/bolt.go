@@ -34,6 +34,11 @@ type (
 	}
 )
 
+// Close closes the bbolt database and releases its file lock
+func (s *Storage) Close() error {
+	return s.db.Close()
+}
+
 // Create implements lease.Storage
 func (s *Storage) Create(ctx context.Context, ip net.IP, clientID string, leased bool, expiration time.Time) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
