@@ -18,6 +18,8 @@ The following instructions will get you a local copy of the project for developm
 
 ### Prerequisites
 
+NextDHCP runs on Linux only: it talks to DHCP clients through AF_PACKET sockets, which other operating systems don't have. You can still work on the code elsewhere, since every package except the `nextdhcp` command itself builds on any system, and build the server for Linux with `GOOS=linux`.
+
 In order to install, hack and test NextDHCP you need a working [Go](https://golang.org) environment. Since this project already adapted go modules you should use Go 1.26 or newer. For testing it is also recommended to have
 at least one virtual machine available.
 
