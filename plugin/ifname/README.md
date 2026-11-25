@@ -39,7 +39,7 @@ Working with VLANs can also be implemented by using the `interface` directive:
 (assuming *eth0.300* is a tagged VLAN port)
 
 ```
-10.0.300.0/24 {
+10.0.30.1/24 {
     interface eth0.300
 }
 ```

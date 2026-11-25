@@ -21,7 +21,7 @@ To install, build and test NextDHCP you need [Go](https://go.dev) 1.26 or newer.
 
 To install NextDHCP without working on its source code, run:
 
-```
+```sh
 go install github.com/nextdhcp/nextdhcp@latest
 ```
 
@@ -29,7 +29,7 @@ This installs the NextDHCP binary into `$GOBIN`, or into `$GOPATH/bin` (`~/go/bi
 
 To work on NextDHCP, clone the repository and build it:
 
-```
+```sh
 git clone https://github.com/nextdhcp/nextdhcp
 cd nextdhcp
 go build -o nextdhcp .
@@ -39,7 +39,7 @@ go build -o nextdhcp .
 
 Before starting NextDHCP you need to create a configuration file. A typical configuration file for a local subnet can look like this:
 
-```bash
+```
 192.168.0.100 - 192.168.0.200
 lease 1h
 option {
@@ -65,7 +65,7 @@ Or, if you need to serve multiple subnets or multiple network interfaces you can
 
 Place your configuration into a file called `Dhcpfile` and start NextDHCP as root:
 
-```
+```sh
 sudo ./nextdhcp
 ```
 

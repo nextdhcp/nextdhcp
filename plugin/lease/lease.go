@@ -67,9 +67,10 @@ func (p *leaseTimePlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 			return c.ArgErr()
 		}
 
-		d, err := time.ParseDuration(c.Val())
+		// Unlike time.ParseDuration, caddy.ParseDuration supports days
+		d, err := caddy.ParseDuration(c.Val())
 		if err != nil {
-			return c.SyntaxErr("time.Duration")
+			return c.SyntaxErr("a duration, like 1h or 1d")
 		}
 
 		p.LeaseTime = caddy.Duration(d)

@@ -28,7 +28,7 @@ where
 
 ```
 10.1.0.1/24 {
-    leaseTime 1h
+    lease 1h
     static 00:aa:de:ad:be:ef 10.1.0.10
     range 10.1.0.100 10.1.0.200
 }

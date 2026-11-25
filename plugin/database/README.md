@@ -39,18 +39,18 @@ database NAME {
 
 ## Examples
 
+The built-in *bolt* driver stores leases in a [bbolt](https://github.com/etcd-io/bbolt) database file. The path of the file is either the option after the driver name, or the value of the `file` key:
+
 ```
 192.168.0.1/24 {
-    database bold ./leases.db
+    database bolt ./leases.db
 }
 ```
 
 ```
 192.168.0.1/24 {
-    database bold {
+    database bolt {
         file ./leases.db
-        timeout 1m
-        mode 0600
     }
 }
 ```
@@ -58,7 +58,7 @@ database NAME {
 There's also the built-in *memory* database driver. Note that this driver does not
 persist leases in any way so a restart of NextDHCP will discard all active leases.
 
-**Use with case**
+**Use with care**
 
 ```
 192.168.0.1/24 {
