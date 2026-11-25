@@ -28,10 +28,10 @@ at least one virtual machine available.
 If you just want to install NextDHCP without planning to hack around in it's source code the following command should be enough to install it
 
 ```
-go get github.com/nextdhcp/nextdhcp
+go install github.com/nextdhcp/nextdhcp@latest
 ```
 
-This will install the NextDHCP binary into `$GOPATH/bin`. If you want to start hacking on the project follow the steps below:
+This will install the NextDHCP binary into `$GOBIN`, or into `$GOPATH/bin` (`~/go/bin` by default) if `GOBIN` isn't set. If you want to start hacking on the project follow the steps below:
 
 First clone the repository to a folder of your choice
 
