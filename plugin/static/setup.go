@@ -42,8 +42,8 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 	// ServeDHCP looks clients up by the canonical (lower case) form of their
 	// MAC address, so store the addresses by that form
 	addresses := make(map[string]net.IP, len(s.Addresses))
-	macs := make(map[string]net.HardwareAddr, len(s.Addresses))
 	clients := make(map[string]string, len(s.Addresses))
+	reservations := make([]lease.ReservedAddress, 0, len(s.Addresses))
 	for key, ip := range s.Addresses {
 		mac, err := net.ParseMAC(key)
 		if err != nil {
@@ -63,18 +63,20 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 		}
 
 		addresses[mac.String()] = ip
-		macs[mac.String()] = mac
 		clients[ip.String()] = key
+		reservations = append(reservations, lease.ReservedAddress{
+			Client: lease.Client{HwAddr: mac, ID: mac.String()},
+			IP:     ip,
+		})
 	}
 
 	s.Addresses = addresses
 
 	// Reserve the addresses in the lease database, so other plugins, like
 	// range, don't lease them to other clients
-	for key, ip := range addresses {
-		cli := lease.Client{HwAddr: macs[key], ID: key}
-		if err := db.ReserveStatic(ctx, ip, cli); err != nil {
-			return fmt.Errorf("failed to reserve static IP %s for client %s: %w", ip, key, err)
+	for _, r := range reservations {
+		if err := db.ReserveStatic(ctx, r.IP, r.Client); err != nil {
+			return fmt.Errorf("failed to reserve static IP %s for client %s: %w", r.IP, r.ID, err)
 		}
 	}
 
