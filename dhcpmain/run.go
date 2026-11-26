@@ -4,6 +4,9 @@ import (
 	"flag"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
@@ -41,8 +44,14 @@ func Run() {
 	// with an error once a server stops serving, so that a service manager
 	// can restart it
 	err = <-app.(*dhcpserver.App).Failed()
+
+	// Caddy exits with status 0 on SIGINT and SIGTERM, so keep a signal from
+	// starting that exit while this one stops NextDHCP. A signal that arrived
+	// just before marks Caddy as exiting right away: let that exit finish, as
+	// it was asked for.
+	signal.Ignore(os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	time.Sleep(100 * time.Millisecond)
 	if caddy.Exiting() {
-		// a signal is stopping the process already
 		select {}
 	}
 
