@@ -19,6 +19,7 @@ The *udp* transport uses UDP sockets only, so NextDHCP only needs to be allowed 
 All subnets must use the same transport, or NextDHCP fails to start. With the *udp* transport:
 
 - NextDHCP needs port 67 of all addresses to itself, so it can't share the host's network with another DHCP server or relay agent, even one that serves other interfaces.
+- An AF_PACKET socket gets requests before the host's firewall filters them, but the UDP socket only gets the requests that the firewall accepts. If the firewall drops incoming traffic by default, it must accept UDP traffic to port 67.
 - The [static](../static) plugin still uses ARP requests, which need `CAP_NET_RAW`, to check whether a device still uses a static IP address that the lease database has leased to another client. Without the capability, NextDHCP logs a warning and keeps the other client's lease until it ends.
 
 ## Syntax
