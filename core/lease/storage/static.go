@@ -1,13 +1,16 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	"github.com/nextdhcp/nextdhcp/core/lease"
+	dhcpLog "github.com/nextdhcp/nextdhcp/core/log"
 )
 
 // staticReservations holds the static reservations of a database, by their
@@ -99,4 +102,106 @@ func (s *staticReservations) list() []lease.ReservedAddress {
 	}
 
 	return reservations
+}
+
+// staticAddress handles a statically reserved IP address.
+type staticAddress struct {
+	db *Database
+	r  lease.ReservedAddress // the reservation, with the 4 byte form of the address
+}
+
+// refuseOthers fails with lease.ErrAddressReserved if cli isn't the client
+// the address is reserved for.
+func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) error {
+	owner := a.r.HwAddr.String()
+	if cli.HwAddr.String() == owner {
+		return nil
+	}
+
+	l := dhcpLog.With(ctx, a.db.l)
+	l.Debugf("IP %s statically reserved for client %s", a.r.IP, owner)
+
+	// RemoveStaticConflicts removed the client's stored lease or reservation
+	// of the address, unless it failed
+	if err := a.removeConflict(ctx); err != nil {
+		l.Errorf("failed to remove lease or reservation of statically reserved IP %s: %s", a.r.IP, err.Error())
+	}
+
+	return lease.ErrAddressReserved
+}
+
+func (a *staticAddress) reserve(ctx context.Context, cli lease.Client) error {
+	// static reservations don't expire, so the client needs no stored one
+	return a.refuseOthers(ctx, cli)
+}
+
+// leaseTo leases the address to the client it's reserved for, and stores
+// the lease like any other, so that the address stays leased to the client
+// until the lease expires if the static reservation is removed. A client
+// that leases its static address gave up any other address, so its lease or
+// reservation of another address is removed, as a client has a single one,
+// and so are conflicts with the static reservation.
+func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
+	if err := a.refuseOthers(ctx, cli); err != nil {
+		return 0, err
+	}
+
+	if err := a.removeConflict(ctx); err != nil {
+		return 0, err
+	}
+
+	clientID := cli.HwAddr.String()
+
+	otherIP, _, _, err := a.db.store.FindByID(ctx, clientID)
+	switch {
+	case err == nil && !otherIP.Equal(a.r.IP):
+		dhcpLog.With(ctx, a.db.l).Infof("removing lease or reservation of IP %s for client %s: the client leases its static IP %s", otherIP, clientID, a.r.IP)
+
+		if err := a.db.deleteEntry(ctx, otherIP, clientID); err != nil {
+			return 0, err
+		}
+
+	case err != nil && !IsNotFound(err):
+		return 0, err
+	}
+
+	stored := storedAddress{db: a.db, ip: a.r.IP}
+
+	return stored.leaseTo(ctx, cli, leaseTime, renew)
+}
+
+// release keeps the static reservation and the stored lease of its client,
+// and removes the leases and reservations of other clients that
+// RemoveStaticConflicts didn't remove, maybe because it failed.
+func (a *staticAddress) release(ctx context.Context) error {
+	return a.removeConflict(ctx)
+}
+
+func (a *staticAddress) deleteReservation(context.Context, *lease.Client) error {
+	return lease.ErrStaticReservation
+}
+
+// removeConflict removes the stored lease or reservation of the address,
+// unless it's a lease of the client it's reserved for. Another client can't
+// renew its lease or reservation of the address, and as a client has a
+// single one, it would keep that client from getting another address.
+func (a *staticAddress) removeConflict(ctx context.Context) error {
+	existingClient, leased, _, err := a.db.store.FindByIP(ctx, a.r.IP)
+	switch {
+	case IsNotFound(err):
+		return nil
+	case err != nil:
+		return err
+	}
+
+	owner := a.r.HwAddr.String()
+	if existingClient == owner && leased {
+		return nil
+	}
+
+	if existingClient != owner {
+		dhcpLog.With(ctx, a.db.l).Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existingClient, owner)
+	}
+
+	return a.db.deleteEntry(ctx, a.r.IP, existingClient)
 }
