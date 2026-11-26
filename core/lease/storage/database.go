@@ -370,5 +370,11 @@ func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease
 
 // Release implements lease.Database
 func (db *Database) Release(ctx context.Context, ip net.IP) error {
+	// leases of statically reserved addresses aren't stored, and releasing
+	// them doesn't remove the static reservation
+	if _, ok := db.staticOwner(ip); ok {
+		return nil
+	}
+
 	return db.store.Delete(ctx, ip, "")
 }

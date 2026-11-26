@@ -68,10 +68,12 @@ type Database interface {
 	// must be made again whenever the database is opened, but the
 	// leases and reservations that contradict them are removed from
 	// the database: those of the IP address, and those of other IP
-	// addresses for the client. Release and DeleteReservation don't
-	// remove static reservations, and ReservedAddresses returns them
-	// without an expiration time. ReserveStatic fails if the IP
-	// address or the client already has a different static reservation
+	// addresses for the client. Release succeeds for a statically
+	// reserved IP address without doing anything, DeleteReservation
+	// doesn't remove static reservations, and ReservedAddresses
+	// returns them without an expiration time. ReserveStatic fails if
+	// the IP address or the client already has a different static
+	// reservation
 	ReserveStatic(context.Context, net.IP, Client) error
 }
 

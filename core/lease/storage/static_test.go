@@ -102,7 +102,7 @@ func TestReserveStatic(t *testing.T) {
 			assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
 
 			// releasing or deleting the reservation doesn't remove it
-			_ = db.Release(ctx, staticIP)
+			assert.NoError(t, db.Release(ctx, staticIP))
 			_ = db.DeleteReservation(ctx, staticIP, nil)
 			assert.ErrorIs(t, db.Reserve(ctx, staticIP, client2), lease.ErrAddressReserved)
 
