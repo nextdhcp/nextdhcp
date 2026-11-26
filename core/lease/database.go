@@ -76,8 +76,8 @@ type StaticReserver interface {
 	// other client, and succeed for the client without storing
 	// anything. Static reservations are kept in memory only, so they
 	// must be made again whenever the database is opened. Release
-	// succeeds for a statically reserved IP address, removing any
-	// stored lease or reservation of it but not the static
+	// succeeds for a statically reserved IP address, removing other
+	// clients' stored leases and reservations of it but not the static
 	// reservation, DeleteReservation fails with ErrStaticReservation,
 	// and ReservedAddresses returns static reservations without an
 	// expiration time. ReserveStatic fails if r has an expiration time,
@@ -86,14 +86,16 @@ type StaticReserver interface {
 	ReserveStatic(context.Context, ReservedAddress) error
 
 	// RemoveStaticConflicts removes the stored leases and reservations
-	// of statically reserved IP addresses. Another client can't renew
-	// its lease or reservation of such an address, and as a client has
-	// a single lease or reservation, it would keep the client from
-	// getting another address. The leases and reservations of other IP
-	// addresses for a client with a static reservation are kept, as
-	// the client uses its lease until it tries to renew it. DHCP
-	// servers call RemoveStaticConflicts once they serve, so nothing
-	// is removed if they fail to start
+	// of statically reserved IP addresses, except the leases of the
+	// clients they are reserved for. Another client can't renew its
+	// lease or reservation of such an address, and as a client has a
+	// single lease or reservation, it would keep the client from
+	// getting another address. Reserve and Lease also remove it when
+	// that client asks for the address. The leases and reservations of
+	// other IP addresses for a client with a static reservation are
+	// kept, as the client uses its lease until it tries to renew it.
+	// DHCP servers call RemoveStaticConflicts once they serve, so
+	// nothing is removed if they fail to start
 	RemoveStaticConflicts(context.Context) error
 }
 

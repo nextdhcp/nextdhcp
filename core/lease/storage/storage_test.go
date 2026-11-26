@@ -73,14 +73,8 @@ func TestReserveStatic(t *testing.T) {
 		db = storage.NewDatabase(store)
 		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
 
-		// other clients can neither renew, lease nor reserve the address
-		_, err = db.Lease(ctx, staticIP, client1, time.Hour, true)
-		assert.ErrorIs(t, err, lease.ErrAddressReserved)
-		_, err = db.Lease(ctx, staticIP, client2, time.Hour, false)
-		assert.ErrorIs(t, err, lease.ErrAddressReserved)
-		assert.ErrorIs(t, db.Reserve(ctx, staticIP, client2), lease.ErrAddressReserved)
-
-		// the lease of the other client is only removed with the conflicts
+		// reserving the address keeps the lease of the other client, which
+		// removing the conflicts removes
 		owner, _, _, err := store.FindByIP(ctx, staticIP)
 		require.NoError(t, err)
 		assert.Equal(t, client1.HwAddr.String(), owner)
@@ -89,6 +83,13 @@ func TestReserveStatic(t *testing.T) {
 
 		_, _, _, err = store.FindByIP(ctx, staticIP)
 		assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
+
+		// other clients can neither renew, lease nor reserve the address
+		_, err = db.Lease(ctx, staticIP, client1, time.Hour, true)
+		assert.ErrorIs(t, err, lease.ErrAddressReserved)
+		_, err = db.Lease(ctx, staticIP, client2, time.Hour, false)
+		assert.ErrorIs(t, err, lease.ErrAddressReserved)
+		assert.ErrorIs(t, db.Reserve(ctx, staticIP, client2), lease.ErrAddressReserved)
 
 		// so that client can get another address
 		assert.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 3}, client1))
@@ -310,5 +311,57 @@ func TestLeaseExpiredKeptForClientWithAddress(t *testing.T) {
 		owner, _, _, err := store.FindByIP(ctx, net.IP{10, 0, 0, 1})
 		require.NoError(t, err)
 		assert.Equal(t, client1.HwAddr.String(), owner)
+	})
+}
+
+// TestStaticConflictHealed checks that when another client asks for a
+// statically reserved IP address, its stored lease of the address that
+// RemoveStaticConflicts didn't remove, for example because it failed, is
+// removed, so that the client can get another address.
+func TestStaticConflictHealed(t *testing.T) {
+	ctx := context.Background()
+	staticIP := net.IP{10, 0, 0, 1}
+	staticClient := lease.Client{HwAddr: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}}
+	other := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		require.NoError(t, store.Create(ctx, staticIP, other.HwAddr.String(), true, time.Now().Add(time.Hour)))
+
+		db := storage.NewDatabase(store)
+		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
+
+		// the other client tries to renew its lease
+		_, err := db.Lease(ctx, staticIP, other, time.Hour, true)
+		assert.ErrorIs(t, err, lease.ErrAddressReserved)
+
+		_, _, _, err = store.FindByIP(ctx, staticIP)
+		assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
+
+		// so it can get another address
+		assert.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 2}, other))
+	})
+}
+
+// TestStaticConflictKeepsOwnerLease checks that removing the conflicts with a
+// static reservation and releasing the address keep a stored lease of the
+// address for the client it's reserved for.
+func TestStaticConflictKeepsOwnerLease(t *testing.T) {
+	ctx := context.Background()
+	staticIP := net.IP{10, 0, 0, 1}
+	staticClient := lease.Client{HwAddr: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		require.NoError(t, store.Create(ctx, staticIP, staticClient.HwAddr.String(), true, time.Now().Add(time.Hour)))
+
+		db := storage.NewDatabase(store)
+		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
+
+		require.NoError(t, db.RemoveStaticConflicts(ctx))
+		require.NoError(t, db.Release(ctx, staticIP))
+
+		owner, leased, _, err := store.FindByIP(ctx, staticIP)
+		require.NoError(t, err)
+		assert.Equal(t, staticClient.HwAddr.String(), owner)
+		assert.True(t, leased)
 	})
 }
