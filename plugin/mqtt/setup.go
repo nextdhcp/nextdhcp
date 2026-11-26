@@ -65,7 +65,7 @@ type (
 // named connection, without condition or payload, for others to use.
 func (cfg PublishConfig) validate() error {
 	if cfg.Connection == nil && cfg.Name == "" {
-		return errors.New("Either configure a MQTT connection or \"use\" an existing one")
+		return errors.New("either configure a MQTT connection or \"use\" an existing one")
 	}
 
 	onlyConnection := cfg.Connection != nil && cfg.Name != "" &&
@@ -235,7 +235,7 @@ func (m *mqttPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 		}
 
 		if !useExisting && cfg.Connection == nil {
-			return c.SyntaxErr("Either configure a MQTT connection or \"use\" an existing one")
+			return c.SyntaxErr("either configure a MQTT connection or \"use\" an existing one")
 		}
 
 		if err := cfg.validate(); err != nil {

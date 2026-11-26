@@ -258,7 +258,7 @@ Placeholders: // process each placeholder in sequence
 // unescapeBraces finds escaped braces in s and returns
 // a string with those braces unescaped.
 func unescapeBraces(s string) string {
-	s = strings.Replace(s, "\\{", "{", -1)
-	s = strings.Replace(s, "\\}", "}", -1)
+	s = strings.ReplaceAll(s, "\\{", "{")
+	s = strings.ReplaceAll(s, "\\}", "}")
 	return s
 }
