@@ -62,7 +62,7 @@ func makeReservedAddressList() ReservedAddressList {
 		list = append(list, ReservedAddress{
 			Client: Client{
 				Hostname: fmt.Sprintf("host-%d", i),
-				ID:       fmt.Sprintf("id-%d", i),
+				ID:       ClientID(fmt.Sprintf("id-%d", i)),
 				HwAddr:   net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, byte(i)},
 			},
 			IP:      net.IP{10, 0, 0, byte(i)},
@@ -122,12 +122,12 @@ func TestReservedAddressList(t *testing.T) {
 
 	t.Run("FindID", func(t *testing.T) {
 		for _, c := range cases {
-			host := fmt.Sprintf("id-%d", c.i)
+			id := ClientID(fmt.Sprintf("id-%d", c.i))
 
 			if c.e {
-				assert.NotNil(t, list.FindID(host))
+				assert.NotNil(t, list.FindID(id))
 			} else {
-				assert.Nil(t, list.FindID(host))
+				assert.Nil(t, list.FindID(id))
 			}
 		}
 	})

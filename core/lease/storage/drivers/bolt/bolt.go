@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"go.etcd.io/bbolt"
 )
@@ -40,7 +41,7 @@ func (s *Storage) Close() error {
 }
 
 // Create implements lease.Storage
-func (s *Storage) Create(ctx context.Context, ip net.IP, clientID string, leased bool, expiration time.Time) error {
+func (s *Storage) Create(ctx context.Context, ip net.IP, clientID lease.ClientID, leased bool, expiration time.Time) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		ipLeaseBucket, idToIPBucket, err := openOrCreateBuckets(tx)
 		if err != nil {
@@ -59,7 +60,7 @@ func (s *Storage) Create(ctx context.Context, ip net.IP, clientID string, leased
 
 		e := entry{
 			Expires:  expiration.Unix(),
-			ClientID: clientID,
+			ClientID: string(clientID),
 			Leased:   leased,
 		}
 		blob, err := json.Marshal(e)
@@ -75,7 +76,7 @@ func (s *Storage) Create(ctx context.Context, ip net.IP, clientID string, leased
 }
 
 // Delete implements storage.LeaseStorage
-func (s *Storage) Delete(ctx context.Context, ip net.IP, clientID string) error {
+func (s *Storage) Delete(ctx context.Context, ip net.IP, clientID lease.ClientID) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		ipLeaseBucket, idToIPBucket, err := openOrCreateBuckets(tx)
 		if err != nil {
@@ -92,7 +93,7 @@ func (s *Storage) Delete(ctx context.Context, ip net.IP, clientID string) error 
 			return err
 		}
 
-		if clientID != "" && e.ClientID != clientID {
+		if clientID != "" && lease.ClientID(e.ClientID) != clientID {
 			return storage.ErrClientMismatch
 		}
 
@@ -105,7 +106,7 @@ func (s *Storage) Delete(ctx context.Context, ip net.IP, clientID string) error 
 }
 
 // Update implements storage.LeaseStorage
-func (s *Storage) Update(ctx context.Context, ip net.IP, clientID string, leased bool, expiration time.Time) error {
+func (s *Storage) Update(ctx context.Context, ip net.IP, clientID lease.ClientID, leased bool, expiration time.Time) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		ipLeaseBucket, _, err := openOrCreateBuckets(tx)
 		if err != nil {
@@ -119,7 +120,7 @@ func (s *Storage) Update(ctx context.Context, ip net.IP, clientID string, leased
 		}
 
 		e := entry{
-			ClientID: clientID,
+			ClientID: string(clientID),
 			Expires:  expiration.Unix(),
 			Leased:   leased,
 		}
@@ -133,7 +134,7 @@ func (s *Storage) Update(ctx context.Context, ip net.IP, clientID string, leased
 }
 
 // FindByIP implements storage.LeaseStorage
-func (s *Storage) FindByIP(ctx context.Context, ip net.IP) (string, bool, time.Time, error) {
+func (s *Storage) FindByIP(ctx context.Context, ip net.IP) (lease.ClientID, bool, time.Time, error) {
 	var e entry
 	err := s.db.View(func(tx *bbolt.Tx) error {
 		ipLeaseBucket := tx.Bucket(ipLeaseBucketKey)
@@ -150,11 +151,11 @@ func (s *Storage) FindByIP(ctx context.Context, ip net.IP) (string, bool, time.T
 		return json.Unmarshal(blob, &e)
 	})
 
-	return e.ClientID, e.Leased, time.Unix(e.Expires, 0), err
+	return lease.ClientID(e.ClientID), e.Leased, time.Unix(e.Expires, 0), err
 }
 
 // FindByID implements storage.LeaseStorage
-func (s *Storage) FindByID(ctx context.Context, clientID string) (net.IP, bool, time.Time, error) {
+func (s *Storage) FindByID(ctx context.Context, clientID lease.ClientID) (net.IP, bool, time.Time, error) {
 	var e entry
 	var ip net.IP
 
@@ -207,8 +208,8 @@ func (s *Storage) ListIPs(ctx context.Context) ([]net.IP, error) {
 }
 
 // ListIDs returns a list of all IDs and implements storage.LeaseStorage
-func (s *Storage) ListIDs(ctx context.Context) ([]string, error) {
-	var ids []string
+func (s *Storage) ListIDs(ctx context.Context) ([]lease.ClientID, error) {
+	var ids []lease.ClientID
 	return ids, s.db.View(func(tx *bbolt.Tx) error {
 		idToIPBucket := tx.Bucket(idToIPBucketKey)
 		if idToIPBucket == nil {
@@ -218,7 +219,7 @@ func (s *Storage) ListIDs(ctx context.Context) ([]string, error) {
 		cursor := idToIPBucket.Cursor()
 		key, _ := cursor.First()
 		for key != nil {
-			ids = append(ids, string(key))
+			ids = append(ids, lease.ClientID(key))
 			key, _ = cursor.Next()
 		}
 		return nil
@@ -239,7 +240,7 @@ func openOrCreateBuckets(tx *bbolt.Tx) (ipLeaseBucket *bbolt.Bucket, idToIPBucke
 	return ipLeaseBucket, idToIPBucket, nil
 }
 
-func assertUniqueClient(bucket *bbolt.Bucket, clientID string, ip net.IP) error {
+func assertUniqueClient(bucket *bbolt.Bucket, clientID lease.ClientID, ip net.IP) error {
 	existingIP := bucket.Get([]byte(clientID))
 	if existingIP != nil && !net.IP(existingIP).Equal(ip) {
 		// values are only valid during the transaction, so copy the IP
@@ -251,7 +252,7 @@ func assertUniqueClient(bucket *bbolt.Bucket, clientID string, ip net.IP) error 
 	return nil
 }
 
-func assertUniqueIP(bucket *bbolt.Bucket, ip net.IP, clientID string) error {
+func assertUniqueIP(bucket *bbolt.Bucket, ip net.IP, clientID lease.ClientID) error {
 	existingEntry := bucket.Get([]byte(ip))
 	if existingEntry == nil {
 		return nil
@@ -262,10 +263,10 @@ func assertUniqueIP(bucket *bbolt.Bucket, ip net.IP, clientID string) error {
 		return err
 	}
 
-	if e.ClientID != clientID {
+	if lease.ClientID(e.ClientID) != clientID {
 		return &storage.ErrDuplicateIP{
 			IP:       ip,
-			ClientID: e.ClientID,
+			ClientID: lease.ClientID(e.ClientID),
 		}
 	}
 

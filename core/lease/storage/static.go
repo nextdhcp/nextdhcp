@@ -128,7 +128,7 @@ func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) erro
 	l := dhcpLog.With(ctx, a.db.l)
 	l.Debugf("IP %s statically reserved for client %s", a.r.IP, owner)
 
-	switch err := a.db.store.Delete(ctx, a.r.IP, string(id)); {
+	switch err := a.db.store.Delete(ctx, a.r.IP, id); {
 	case err == nil:
 		l.Infof("removed lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, id, owner)
 	case !IsNotFound(err) && !errors.Is(err, ErrClientMismatch):
@@ -143,7 +143,7 @@ func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) erro
 // hasn't expired, and removes other leases and reservations of other clients
 // of the address, which they don't use.
 func (a *staticAddress) prepare(ctx context.Context) error {
-	stored, leased, expiration, err := a.db.store.FindByIP(ctx, a.r.IP)
+	existing, leased, expiration, err := a.db.store.FindByIP(ctx, a.r.IP)
 	switch {
 	case IsNotFound(err):
 		return nil
@@ -151,7 +151,7 @@ func (a *staticAddress) prepare(ctx context.Context) error {
 		return err
 	}
 
-	existing, owner := clientID(stored), idOf(a.r.Client)
+	owner := idOf(a.r.Client)
 	if existing == owner {
 		return nil
 	}
@@ -192,7 +192,7 @@ func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 
 	id := idOf(cli)
 
-	otherIP, _, _, err := a.db.store.FindByID(ctx, string(id))
+	otherIP, _, _, err := a.db.store.FindByID(ctx, id)
 	switch {
 	case err == nil && !otherIP.Equal(a.r.IP):
 		dhcpLog.With(ctx, a.db.l).Infof("removing lease or reservation of IP %s for client %s: the client leases its static IP %s", otherIP, id, a.r.IP)
@@ -214,7 +214,7 @@ func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 // of its client, and removes the lease or reservation of another client,
 // which gives the address up.
 func (a *staticAddress) release(ctx context.Context) error {
-	stored, _, _, err := a.db.store.FindByIP(ctx, a.r.IP)
+	existing, _, _, err := a.db.store.FindByIP(ctx, a.r.IP)
 	switch {
 	case IsNotFound(err):
 		return nil
@@ -222,7 +222,7 @@ func (a *staticAddress) release(ctx context.Context) error {
 		return err
 	}
 
-	existing, owner := clientID(stored), idOf(a.r.Client)
+	owner := idOf(a.r.Client)
 	if existing == owner {
 		return nil
 	}

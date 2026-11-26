@@ -18,12 +18,9 @@ type Database struct {
 	static staticReservations
 }
 
-// clientID identifies a client in storages: by its hardware address.
-type clientID string
-
-// idOf returns the ID of cli.
-func idOf(cli lease.Client) clientID {
-	return clientID(cli.HwAddr.String())
+// idOf returns the ID that storages identify cli by.
+func idOf(cli lease.Client) lease.ClientID {
+	return lease.HardwareAddrID(cli.HwAddr)
 }
 
 // NewDatabase creates a new database that uses store for persistence. It
@@ -180,11 +177,11 @@ func (db *Database) RemoveStaticConflicts(ctx context.Context) error {
 // the client of an entry, and hold one entry per client, so it keeps the
 // expired entry, and fails with ErrDuplicateClientID, if the client id has an
 // entry for another address.
-func (db *Database) takeOver(ctx context.Context, ip net.IP, existing, id clientID) error {
-	clientIP, _, _, err := db.store.FindByID(ctx, string(id))
+func (db *Database) takeOver(ctx context.Context, ip net.IP, existing, id lease.ClientID) error {
+	clientIP, _, _, err := db.store.FindByID(ctx, id)
 	switch {
 	case err == nil:
-		return &ErrDuplicateClientID{ClientID: string(id), IP: clientIP}
+		return &ErrDuplicateClientID{ClientID: id, IP: clientIP}
 	case !IsNotFound(err):
 		return err
 	}
@@ -196,8 +193,8 @@ func (db *Database) takeOver(ctx context.Context, ip net.IP, existing, id client
 
 // deleteEntry deletes the lease or reservation of ip for the client id from
 // the storage, unless it's already gone.
-func (db *Database) deleteEntry(ctx context.Context, ip net.IP, id clientID) error {
-	if err := db.store.Delete(ctx, ip, string(id)); err != nil && !IsNotFound(err) {
+func (db *Database) deleteEntry(ctx context.Context, ip net.IP, id lease.ClientID) error {
+	if err := db.store.Delete(ctx, ip, id); err != nil && !IsNotFound(err) {
 		return err
 	}
 
@@ -217,8 +214,7 @@ func (a *storedAddress) reserve(ctx context.Context, cli lease.Client) error {
 
 	id := idOf(cli)
 
-	stored, leased, expiration, err := db.store.FindByIP(ctx, ip)
-	existing := clientID(stored)
+	existing, leased, expiration, err := db.store.FindByIP(ctx, ip)
 	if err != nil && !IsNotFound(err) {
 		l.Debugf("failed to query IP storage for %s: %s", ip, err.Error())
 		return err
@@ -245,7 +241,7 @@ func (a *storedAddress) reserve(ctx context.Context, cli lease.Client) error {
 		if time.Now().After(expiration) {
 			if !leased {
 				l.Debugf("updating expired reservation for %s", ip)
-				if err := db.store.Update(ctx, ip, string(id), false, time.Now().Add(time.Minute)); err != nil {
+				if err := db.store.Update(ctx, ip, id, false, time.Now().Add(time.Minute)); err != nil {
 					return err
 				}
 			} else {
@@ -258,7 +254,7 @@ func (a *storedAddress) reserve(ctx context.Context, cli lease.Client) error {
 		return nil
 	}
 
-	return db.store.Create(ctx, ip, string(id), false, time.Now().Add(time.Minute))
+	return db.store.Create(ctx, ip, id, false, time.Now().Add(time.Minute))
 }
 
 func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
@@ -267,8 +263,7 @@ func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 
 	id := idOf(cli)
 
-	stored, leased, expiration, err := db.store.FindByIP(ctx, ip)
-	existing := clientID(stored)
+	existing, leased, expiration, err := db.store.FindByIP(ctx, ip)
 	if err != nil && !IsNotFound(err) {
 		l.Errorf("failed to query lease storage for %s: %s", ip.String(), err.Error())
 		return 0, err
@@ -285,7 +280,7 @@ func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 			if !leased || renew || remaining < time.Second {
 				newExpiration := time.Now().Add(leaseTime)
 				l.Debugf("updating existing lease for IP %s (expiration=%s new-expiration=%s)", ip.String(), expiration, newExpiration)
-				return leaseTime, db.store.Update(ctx, ip, string(id), true, newExpiration)
+				return leaseTime, db.store.Update(ctx, ip, id, true, newExpiration)
 			}
 
 			l.Debugf("using existing lease for IP %s", ip.String())
@@ -309,7 +304,7 @@ func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 		// fallthrough
 	}
 
-	if err := db.store.Create(ctx, ip, string(id), true, time.Now().Add(leaseTime)); err != nil {
+	if err := db.store.Create(ctx, ip, id, true, time.Now().Add(leaseTime)); err != nil {
 		l.Errorf("failed to lease IP %s for client %s: %s", ip.String(), id, err.Error())
 		return 0, err
 	}
@@ -323,7 +318,7 @@ func (a *storedAddress) release(ctx context.Context) error {
 }
 
 func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client) error {
-	var id clientID
+	var id lease.ClientID
 	if cli != nil {
 		id = idOf(*cli)
 	}
@@ -333,7 +328,7 @@ func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client
 		return err
 	}
 
-	if id != "" && id != clientID(stored) {
+	if id != "" && id != stored {
 		return ErrClientMismatch
 	}
 
@@ -341,7 +336,7 @@ func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client
 		return errors.New("reservation not found")
 	}
 
-	return a.db.store.Delete(ctx, a.ip, string(id))
+	return a.db.store.Delete(ctx, a.ip, id)
 }
 
 // Interface guards

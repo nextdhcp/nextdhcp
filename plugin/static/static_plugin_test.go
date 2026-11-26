@@ -153,7 +153,7 @@ func TestStaticStoresLease(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, leases, 1)
 		assert.Equal(t, "127.0.0.50", leases[0].Address.String())
-		assert.Equal(t, "00:aa:bb:cc:dd:ee", leases[0].ID)
+		assert.Equal(t, lease.ClientID("00:aa:bb:cc:dd:ee"), leases[0].ID)
 		assert.WithinDuration(t, time.Now().Add(leaseTime), leases[0].Expires, 5*time.Second)
 	}
 }

@@ -79,7 +79,7 @@ func (rl ReservedAddressList) FindHostname(name string) *ReservedAddress {
 }
 
 // FindID searches the list of reserved addresses for ID
-func (rl ReservedAddressList) FindID(id string) *ReservedAddress {
+func (rl ReservedAddressList) FindID(id ClientID) *ReservedAddress {
 	for _, r := range rl {
 		if r.ID == id {
 			return &r
