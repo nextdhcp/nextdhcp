@@ -199,3 +199,34 @@ func TestLeaseReservedAddress(t *testing.T) {
 		})
 	}
 }
+
+// TestLeaseAlmostExpired checks that a client that keeps its lease gets the
+// full lease time if less than a second of the lease remains, as lease times
+// are sent in whole seconds, while a client with more time left keeps it.
+func TestLeaseAlmostExpired(t *testing.T) {
+	ctx := context.Background()
+	client := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	other := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+
+	for _, driver := range []string{"memory", "bolt"} {
+		t.Run(driver, func(t *testing.T) {
+			store := openStorage(t, driver)
+			require.NoError(t, store.Create(ctx, net.IP{10, 0, 0, 1}, client.HwAddr.String(), true, time.Now().Add(500*time.Millisecond)))
+			require.NoError(t, store.Create(ctx, net.IP{10, 0, 0, 2}, other.HwAddr.String(), true, time.Now().Add(10*time.Minute)))
+
+			db := storage.NewDatabase(store)
+
+			leaseTime, err := db.Lease(ctx, net.IP{10, 0, 0, 1}, client, time.Hour, false)
+			require.NoError(t, err)
+			assert.Equal(t, time.Hour, leaseTime)
+
+			_, _, expiration, err := store.FindByIP(ctx, net.IP{10, 0, 0, 1})
+			require.NoError(t, err)
+			assert.WithinDuration(t, time.Now().Add(time.Hour), expiration, 5*time.Second)
+
+			leaseTime, err = db.Lease(ctx, net.IP{10, 0, 0, 2}, other, time.Hour, false)
+			require.NoError(t, err)
+			assert.InDelta(t, 10*time.Minute, leaseTime, float64(5*time.Second))
+		})
+	}
+}

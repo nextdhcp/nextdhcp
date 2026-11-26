@@ -315,8 +315,11 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 		if existingClient == clientID {
 			// A reservation of the client becomes a lease with the full lease
 			// time, and so does its lease if it's renewed or expired.
-			// Otherwise the client keeps the lease it has.
-			if !leased || renew || time.Now().After(expiration) {
+			// Otherwise the client keeps the lease it has, unless less than a
+			// second remains: lease times are sent in whole seconds, so the
+			// client would be told 0.
+			remaining := time.Until(expiration)
+			if !leased || renew || remaining < time.Second {
 				newExpiration := time.Now().Add(leaseTime)
 				l.Debugf("updating existing lease for IP %s (expiration=%s new-expiration=%s)", ip.String(), expiration, newExpiration)
 				return leaseTime, db.store.Update(ctx, ip, existingClient, true, newExpiration)
@@ -324,7 +327,7 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 
 			l.Debugf("using existing lease for IP %s", ip.String())
 
-			return time.Until(expiration), nil
+			return remaining, nil
 		}
 
 		// IP address already leased for a different client
