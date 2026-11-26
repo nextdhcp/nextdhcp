@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
@@ -118,4 +119,39 @@ func TestStaticMACCase(t *testing.T) {
 		"00:aa:bb:cc:dd:ee": {127, 0, 0, 51},
 	}})
 	assert.Error(t, err)
+}
+
+// TestStaticStoresLease checks that the lease of a static address is stored,
+// and expires when the client is told, also when the client requests the
+// address again.
+func TestStaticStoresLease(t *testing.T) {
+	p, err := makeStaticPlugin(t, "static 00:aa:bb:cc:dd:ee 127.0.0.50")
+	require.NoError(t, err)
+	p.Wrap(test.ErrorHandler)
+
+	ctx := context.Background()
+
+	for _, leaseTime := range []time.Duration{30 * time.Minute, 45 * time.Minute} {
+		req, err := dhcpv4.NewDiscovery(net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee},
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+			dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(net.IP{127, 0, 0, 50})),
+		)
+		require.NoError(t, err)
+		res, err := dhcpv4.NewReplyFromRequest(req)
+		require.NoError(t, err)
+
+		// like the lease plugin
+		res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
+
+		require.NoError(t, p.ServeDHCP(ctx, req, res))
+		require.Equal(t, dhcpv4.MessageTypeAck, res.MessageType())
+		assert.Equal(t, leaseTime, res.IPAddressLeaseTime(0))
+
+		leases, err := p.Config.Database.Leases(ctx)
+		require.NoError(t, err)
+		require.Len(t, leases, 1)
+		assert.Equal(t, "127.0.0.50", leases[0].Address.String())
+		assert.Equal(t, "00:aa:bb:cc:dd:ee", leases[0].ID)
+		assert.WithinDuration(t, time.Now().Add(leaseTime), leases[0].Expires, 5*time.Second)
+	}
 }

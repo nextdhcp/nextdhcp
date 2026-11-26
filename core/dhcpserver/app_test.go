@@ -347,6 +347,32 @@ func TestStaticAddressReserved(t *testing.T) {
 		leaseAddress(t, conn, thirdClient, "127.0.0.12")
 	})
 
+	t.Run("static removed", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		require.True(t, t.Run("with static", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, static))
+			leaseAddress(t, conn, staticClient, "127.0.0.10")
+		}))
+
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
+
+		// the client keeps its lease until it expires, so other clients don't
+		// get the address, and it can renew the lease
+		leaseAddress(t, conn, otherClient, "127.0.0.11")
+
+		renew, err := dhcpv4.New(
+			dhcpv4.WithHwAddr(staticClient),
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+			dhcpv4.WithClientIP(net.IP{127, 0, 0, 10}),
+		)
+		require.NoError(t, err)
+
+		ack := conn.exchange(t, renew)
+		assert.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
+		assert.Equal(t, "127.0.0.10", ack.YourIPAddr.String())
+	})
+
 	t.Run("failed start", func(t *testing.T) {
 		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
 

@@ -102,13 +102,13 @@ func (db *Database) ReservedAddresses(ctx context.Context) (lease.ReservedAddres
 	return append(leases, db.static.list()...), nil
 }
 
-// checkStatic reports whether ip is statically reserved, and returns
-// lease.ErrAddressReserved if it is reserved for another client than the one
-// with clientID.
-func (db *Database) checkStatic(ctx context.Context, ip net.IP, clientID string) (bool, error) {
+// checkStatic returns the static reservation of ip and reports whether there
+// is one, and returns lease.ErrAddressReserved if it is for another client
+// than the one with clientID.
+func (db *Database) checkStatic(ctx context.Context, ip net.IP, clientID string) (lease.ReservedAddress, bool, error) {
 	r, ok := db.static.get(ip)
 	if !ok {
-		return false, nil
+		return r, false, nil
 	}
 
 	if owner := r.HwAddr.String(); owner != clientID {
@@ -121,10 +121,10 @@ func (db *Database) checkStatic(ctx context.Context, ip net.IP, clientID string)
 			l.Errorf("failed to remove lease or reservation of statically reserved IP %s: %s", r.IP, err.Error())
 		}
 
-		return true, lease.ErrAddressReserved
+		return r, true, lease.ErrAddressReserved
 	}
 
-	return true, nil
+	return r, true, nil
 }
 
 // removeConflict removes the stored lease or reservation of the statically
@@ -210,7 +210,7 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 
 	clientID := cli.HwAddr.String()
 
-	if static, err := db.checkStatic(ctx, ip, clientID); static {
+	if _, static, err := db.checkStatic(ctx, ip, clientID); static {
 		// static reservations don't expire
 		return err
 	}
@@ -260,18 +260,52 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 
 // Lease implementes lease.Database
 func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
-	l := dhcpLog.With(ctx, db.l)
-
-	clientID := cli.HwAddr.String()
-
-	if static, err := db.checkStatic(ctx, ip, clientID); static {
+	if r, static, err := db.checkStatic(ctx, ip, cli.HwAddr.String()); static {
 		if err != nil {
 			return 0, err
 		}
 
-		// leases of statically reserved addresses aren't stored
-		return leaseTime, nil
+		return db.leaseStatic(ctx, r, cli, leaseTime, renew)
 	}
+
+	return db.leaseStored(ctx, ip, cli, leaseTime, renew)
+}
+
+// leaseStatic leases the statically reserved IP address of r to its client,
+// and stores the lease like any other, so that the address stays leased to
+// the client until the lease expires if the static reservation is removed.
+// A client that leases its static address gave up any other address, so its
+// lease or reservation of another address is removed, as a client has a
+// single one, and so are conflicts with the static reservation.
+func (db *Database) leaseStatic(ctx context.Context, r lease.ReservedAddress, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
+	if err := db.removeConflict(ctx, r); err != nil {
+		return 0, err
+	}
+
+	clientID := cli.HwAddr.String()
+
+	otherIP, _, _, err := db.store.FindByID(ctx, clientID)
+	switch {
+	case err == nil && !otherIP.Equal(r.IP):
+		dhcpLog.With(ctx, db.l).Infof("removing lease or reservation of IP %s for client %s: the client leases its static IP %s", otherIP, clientID, r.IP)
+
+		if err := db.deleteEntry(ctx, otherIP, clientID); err != nil {
+			return 0, err
+		}
+
+	case err != nil && !IsNotFound(err):
+		return 0, err
+	}
+
+	// r has the address in the 4 byte form that storages store addresses in
+	return db.leaseStored(ctx, r.IP, cli, leaseTime, renew)
+}
+
+// leaseStored leases ip to cli in the storage, see lease.Database.
+func (db *Database) leaseStored(ctx context.Context, ip net.IP, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
+	l := dhcpLog.With(ctx, db.l)
+
+	clientID := cli.HwAddr.String()
 
 	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
 	if err != nil && !IsNotFound(err) {
@@ -352,9 +386,10 @@ func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease
 
 // Release implements lease.Database
 func (db *Database) Release(ctx context.Context, ip net.IP) error {
-	// Releasing a statically reserved address keeps the static reservation,
-	// and removes the leases and reservations of other clients that
-	// RemoveStaticConflicts didn't remove, maybe because it failed
+	// Releasing a statically reserved address keeps the static reservation
+	// and the stored lease of its client, and removes the leases and
+	// reservations of other clients that RemoveStaticConflicts didn't
+	// remove, maybe because it failed
 	if r, ok := db.static.get(ip); ok {
 		return db.removeConflict(ctx, r)
 	}

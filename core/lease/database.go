@@ -73,12 +73,17 @@ type StaticReserver interface {
 	// identified by its hardware address, for as long as the database
 	// is open, like a static address configured for the client: Reserve
 	// and Lease fail with ErrAddressReserved for the IP address and any
-	// other client, and succeed for the client without storing
-	// anything. Static reservations are kept in memory only, so they
-	// must be made again whenever the database is opened. Release
-	// succeeds for a statically reserved IP address, removing other
-	// clients' stored leases and reservations of it but not the static
-	// reservation, DeleteReservation fails with ErrStaticReservation,
+	// other client. For the client, Reserve succeeds without storing a
+	// reservation, and Lease stores the lease like any other, so that
+	// the address stays leased to the client until the lease expires if
+	// the static reservation is removed, and removes the client's lease
+	// or reservation of another address, which it gave up. Static
+	// reservations are kept in memory only, so they must be made again
+	// whenever the database is opened. Release succeeds for a
+	// statically reserved IP address, removing other clients' stored
+	// leases and reservations of it but neither the static reservation
+	// nor its client's lease, DeleteReservation fails with
+	// ErrStaticReservation,
 	// and ReservedAddresses returns static reservations without an
 	// expiration time. ReserveStatic fails if r has an expiration time,
 	// or if the IP address or the client already has a different

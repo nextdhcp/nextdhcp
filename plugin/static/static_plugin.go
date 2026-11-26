@@ -3,9 +3,11 @@ package static
 import (
 	"context"
 	"net"
+	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
@@ -48,6 +50,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 			}
 
 			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
+			s.storeLease(ctx, req, res, static)
 		}
 
 		// TODO(ppacher): should we allow configuration of leaseTime or client specific options here?
@@ -63,4 +66,22 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	}
 
 	return s.Next.ServeDHCP(ctx, req, res)
+}
+
+// storeLease stores the lease of the static IP address ip for the client of
+// req, so that the address stays leased to the client until the lease
+// expires if ip is removed from the configuration, and tells the client the
+// lease time. Each request renews the lease, so the database lets it expire
+// when the client is told. If storing it fails, the client is still sent ip,
+// with the lease time configured.
+func (s *Plugin) storeLease(ctx context.Context, req, res *dhcpv4.DHCPv4, ip net.IP) {
+	cli := lease.Client{HwAddr: req.ClientHWAddr, ID: req.ClientHWAddr.String()}
+
+	leaseTime, err := s.Config.Database.Lease(ctx, ip, cli, res.IPAddressLeaseTime(time.Hour), true)
+	if err != nil {
+		log.With(ctx, s.L).Warnf("%s: failed to store the lease of static IP %s: %s", req.ClientHWAddr, ip, err.Error())
+		return
+	}
+
+	res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
 }
