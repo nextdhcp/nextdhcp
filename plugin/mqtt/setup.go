@@ -107,7 +107,7 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 		}
 
 		if pub.Connection != nil {
-			cfg.conn = &mqttConnConfig{
+			cfg.conn = &mqttConnection{
 				broker:       pub.Connection.Broker,
 				user:         pub.Connection.User,
 				password:     pub.Connection.Password,

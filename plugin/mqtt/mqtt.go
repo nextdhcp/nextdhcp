@@ -19,7 +19,7 @@ type (
 	// from the given request and response DHCPv4 messages
 	msgFactory func(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error)
 
-	mqttConnConfig struct {
+	mqttConnection struct {
 		broker       []string
 		user         string
 		password     string
@@ -36,7 +36,7 @@ type (
 	mqttConfig struct {
 		*matcher.Matcher
 
-		conn    *mqttConnConfig
+		conn    *mqttConnection
 		name    string // optional name for the mqtt config
 		topic   msgFactory
 		payload msgFactory
@@ -138,7 +138,7 @@ var errConnectionClosed = errors.New("MQTT connection already closed")
 
 // client returns the connected client, and connects first if there is none.
 // It doesn't hold conn.l while it connects, so close doesn't wait for that.
-func (conn *mqttConnConfig) client(l log.Logger) (mqtt.Client, error) {
+func (conn *mqttConnection) client(l log.Logger) (mqtt.Client, error) {
 	for {
 		conn.l.Lock()
 		switch {
@@ -189,7 +189,7 @@ func (conn *mqttConnConfig) client(l log.Logger) (mqtt.Client, error) {
 
 // close disconnects the client and keeps new connections from being opened,
 // so messages still being published don't open one that nothing would close.
-func (conn *mqttConnConfig) close() {
+func (conn *mqttConnection) close() {
 	conn.l.Lock()
 	conn.closed = true
 	cli := conn.c
@@ -201,7 +201,7 @@ func (conn *mqttConnConfig) close() {
 	}
 }
 
-func (conn *mqttConnConfig) open(l log.Logger) (mqtt.Client, error) {
+func (conn *mqttConnection) open(l log.Logger) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions()
 
 	for _, b := range conn.broker {
