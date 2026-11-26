@@ -288,3 +288,27 @@ func TestReserveExpiredKeptForClientWithAddress(t *testing.T) {
 		assert.Equal(t, client1.HwAddr.String(), owner)
 	})
 }
+
+// TestLeaseExpiredKeptForClientWithAddress checks that leasing an IP address
+// whose entry of another client expired doesn't remove that entry if the
+// client can't get the address anyway, as it has another one.
+func TestLeaseExpiredKeptForClientWithAddress(t *testing.T) {
+	ctx := context.Background()
+	client1 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	client2 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		require.NoError(t, store.Create(ctx, net.IP{10, 0, 0, 1}, client1.HwAddr.String(), true, time.Now().Add(-time.Minute)))
+		require.NoError(t, store.Create(ctx, net.IP{10, 0, 0, 2}, client2.HwAddr.String(), true, time.Now().Add(time.Hour)))
+
+		db := storage.NewDatabase(store)
+
+		var duplicate *storage.ErrDuplicateClientID
+		_, err := db.Lease(ctx, net.IP{10, 0, 0, 1}, client2, time.Hour, false)
+		assert.ErrorAs(t, err, &duplicate)
+
+		owner, _, _, err := store.FindByIP(ctx, net.IP{10, 0, 0, 1})
+		require.NoError(t, err)
+		assert.Equal(t, client1.HwAddr.String(), owner)
+	})
+}

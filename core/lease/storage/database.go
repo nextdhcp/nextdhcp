@@ -119,6 +119,25 @@ func (db *Database) checkStatic(ctx context.Context, ip net.IP, clientID string)
 	return true, nil
 }
 
+// takeOver removes the expired lease or reservation of ip for the client with
+// existingClient, so that the client with clientID can get the address.
+// Storages can't change the client of an entry, and hold one entry per
+// client, so it keeps the expired entry, and fails with ErrDuplicateClientID,
+// if the client with clientID has an entry for another address.
+func (db *Database) takeOver(ctx context.Context, ip net.IP, existingClient, clientID string) error {
+	clientIP, _, _, err := db.store.FindByID(ctx, clientID)
+	switch {
+	case err == nil:
+		return &ErrDuplicateClientID{ClientID: clientID, IP: clientIP}
+	case !IsNotFound(err):
+		return err
+	}
+
+	dhcpLog.With(ctx, db.l).Debugf("removing expired entry of IP %s for client %s", ip, existingClient)
+
+	return db.deleteEntry(ctx, ip, existingClient)
+}
+
 // deleteEntry deletes the lease or reservation of ip for the client with
 // clientID from the storage, unless it's already gone.
 func (db *Database) deleteEntry(ctx context.Context, ip net.IP, clientID string) error {
@@ -191,27 +210,12 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 			return lease.ErrAddressReserved
 		}
 
-		// The entry of the other client expired, so remove it and reserve
-		// the IP address for this client. Storages can't update an entry
-		// to belong to another client, and hold one entry per client, so
-		// keep the expired entry if this client has one for another address
-		clientIP, _, _, err := db.store.FindByID(ctx, clientID)
-		switch {
-		case err == nil:
-			return &ErrDuplicateClientID{ClientID: clientID, IP: clientIP}
-		case !IsNotFound(err):
+		// the entry of the other client expired, so reserve the IP address
+		// for this client instead
+		if err := db.takeOver(ctx, ip, existingClient, clientID); err != nil {
 			return err
 		}
-
-		l.Debugf("removing expired entry of IP %s for client %s", ip, existingClient)
-		if err := db.deleteEntry(ctx, ip, existingClient); err != nil {
-			return err
-		}
-
-		return db.store.Create(ctx, ip, clientID, false, time.Now().Add(time.Minute))
-	}
-
-	if err == nil { // !IsNotFound(err)
+	} else if err == nil {
 		// The IP address is already leased  or reserved for this client. In case
 		// the reservation expired we'll update it's validity
 		//
@@ -283,9 +287,9 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 			return 0, lease.ErrAddressReserved
 		}
 
-		// IP lease already expired so we can delete it
+		// IP lease already expired so we can take it over
 		l.Infof("IP %s entry for client %s expired, overwritting (leased = %v)", ip, cli, leased)
-		if err := db.deleteEntry(ctx, ip, existingClient); err != nil {
+		if err := db.takeOver(ctx, ip, existingClient, clientID); err != nil {
 			return 0, err
 		}
 
