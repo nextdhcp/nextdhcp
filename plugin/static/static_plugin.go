@@ -23,6 +23,8 @@ type Plugin struct {
 	Config *dhcpserver.Server `json:"-"`
 	Next   plugin.Handler     `json:"-"`
 	L      log.Logger         `json:"-"`
+
+	owners map[string]string // the client MAC address of each IP address
 }
 
 // Name returns "static" and implements plugin.Handler
@@ -36,6 +38,10 @@ func (s *Plugin) Name() string {
 // was configured, the request is passed on to the next handler, so that the
 // client is served like any other until that lease ends.
 func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+	if dhcpserver.Request(req) && s.refuseStaticOfOther(ctx, req, res) {
+		return nil
+	}
+
 	static, hasStatic := s.Addresses[req.ClientHWAddr.String()]
 	if !hasStatic || !dhcpserver.Discover(req) && !dhcpserver.Request(req) {
 		return s.Next.ServeDHCP(ctx, req, res)
@@ -45,10 +51,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	cli := lease.NewClient(req.ClientHWAddr)
 
 	if dhcpserver.Request(req) {
-		reqIP := req.RequestedIPAddress()
-		if reqIP == nil || reqIP.IsUnspecified() {
-			reqIP = req.ClientIPAddr
-		}
+		reqIP := requestedIP(req)
 
 		// Deny a DHCPREQUEST for a different IP address, so that the client
 		// asks for its static address, unless that is still leased to
@@ -97,6 +100,42 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 
 	l.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
 	return nil
+}
+
+// requestedIP returns the IP address that req, a DHCPREQUEST, asks for.
+func requestedIP(req *dhcpv4.DHCPv4) net.IP {
+	ip := req.RequestedIPAddress()
+	if ip == nil || ip.IsUnspecified() {
+		ip = req.ClientIPAddr
+	}
+
+	return ip
+}
+
+// refuseStaticOfOther refuses req, a DHCPREQUEST, with a DHCPNAK if it asks
+// for the static IP address of another client, and reports whether it did.
+// Refusing it through the lease database ends the requesting client's lease
+// of the address, so that the client the address is assigned to can get it,
+// also without a plugin like range, whose refusal would end it too.
+func (s *Plugin) refuseStaticOfOther(ctx context.Context, req, res *dhcpv4.DHCPv4) bool {
+	ip := requestedIP(req)
+
+	owner, ok := s.owners[ip.String()]
+	if !ok || owner == req.ClientHWAddr.String() {
+		return false
+	}
+
+	l := log.With(ctx, s.L)
+
+	_, err := s.Config.Database.Lease(ctx, ip, lease.NewClient(req.ClientHWAddr), res.IPAddressLeaseTime(time.Hour), false)
+	if err != nil && !errors.Is(err, lease.ErrAddressReserved) {
+		l.Warnf("%s: failed to end the lease of IP %s, the static IP of client %s: %s", req.ClientHWAddr, ip, owner, err.Error())
+	}
+
+	l.Infof("%s: denying request for IP %s, the static IP of client %s", req.ClientHWAddr, ip, owner)
+	res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
+
+	return true
 }
 
 // inUse reports whether the static IP address ip of cli is still leased to

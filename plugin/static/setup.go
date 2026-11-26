@@ -46,7 +46,7 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 	// ServeDHCP looks clients up by the canonical (lower case) form of their
 	// MAC address, so store the addresses by that form
 	addresses := make(map[string]net.IP, len(s.Addresses))
-	clients := make(map[string]string, len(s.Addresses))
+	owners := make(map[string]string, len(s.Addresses))
 	reservations := make([]lease.ReservedAddress, 0, len(s.Addresses))
 	for key, ip := range s.Addresses {
 		mac, err := net.ParseMAC(key)
@@ -62,12 +62,12 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("static IP address has already been configured for client %s", mac)
 		}
 
-		if other, ok := clients[ip.String()]; ok {
+		if other, ok := owners[ip.String()]; ok {
 			return fmt.Errorf("IP %s already used for client %s", ip, other)
 		}
 
 		addresses[mac.String()] = ip
-		clients[ip.String()] = key
+		owners[ip.String()] = mac.String()
 		reservations = append(reservations, lease.ReservedAddress{
 			Client: lease.NewClient(mac),
 			IP:     ip,
@@ -75,6 +75,7 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 	}
 
 	s.Addresses = addresses
+	s.owners = owners
 
 	// Reserve the addresses in the lease database, so other plugins, like
 	// range, don't lease them to other clients
