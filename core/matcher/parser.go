@@ -33,7 +33,7 @@ func ParseConditions(c *caddyfile.Dispenser) (string, error) {
 			case "||":
 				op = "||"
 			default:
-				return "", c.ArgErr()
+				return "", disp.ArgErr()
 			}
 		}
 	}

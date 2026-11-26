@@ -49,6 +49,14 @@ func TestSetupMatcher(t *testing.T) {
 	}
 }
 
+// TestSetupMatcherIfOpError checks that an invalid if_op is reported where it
+// is in the Dhcpfile.
+func TestSetupMatcherIfOpError(t *testing.T) {
+	_, err := SetupMatcher(caddyfile.NewTestDispenser("{\nif msgtype == DISCOVER\nif_op xor\n}"))
+	assert.ErrorContains(t, err, "Testfile:3")
+	assert.ErrorContains(t, err, "'xor'")
+}
+
 func TestMatcherWithFunctions(t *testing.T) {
 	input := "testFunc(\"arg1\")"
 	disp := caddyfile.NewTestDispenser(input)
