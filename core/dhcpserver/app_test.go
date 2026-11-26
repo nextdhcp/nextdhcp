@@ -373,6 +373,31 @@ func TestStaticAddressReserved(t *testing.T) {
 		assert.Equal(t, "127.0.0.10", ack.YourIPAddr.String())
 	})
 
+	t.Run("static outside range removed", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		require.True(t, t.Run("with static", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, "static aa:bb:cc:dd:ee:ff 127.0.0.50"))
+			leaseAddress(t, conn, staticClient, "127.0.0.50")
+		}))
+
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
+
+		// nothing serves the address anymore, so its renewal is refused
+		renew, err := dhcpv4.New(
+			dhcpv4.WithHwAddr(staticClient),
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+			dhcpv4.WithClientIP(net.IP{127, 0, 0, 50}),
+		)
+		require.NoError(t, err)
+
+		nak := conn.exchange(t, renew)
+		assert.Equal(t, dhcpv4.MessageTypeNak, nak.MessageType())
+
+		// and the client gets an address of the range instead
+		leaseAddress(t, conn, staticClient, "127.0.0.10")
+	})
+
 	t.Run("failed start", func(t *testing.T) {
 		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
 

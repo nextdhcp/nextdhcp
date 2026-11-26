@@ -13,6 +13,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/lease/iprange"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
@@ -104,11 +105,18 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 		// TODO(ppacher): should we check for context errors here?
 	}
 
+	released := false
 	for _, r := range p.Ranges {
 		for idx := 0; idx < r.Len(); idx++ {
 			ip := r.ByIdx(idx)
 
-			if err := db.Reserve(ctx, ip, cli); err != nil {
+			err := db.Reserve(ctx, ip, cli)
+			if err != nil && !released && p.releaseOutsideRanges(ctx, mac, err, db) {
+				released = true
+				err = db.Reserve(ctx, ip, cli)
+			}
+
+			if err != nil {
 				// failed to reserve the IP address
 				if err == context.DeadlineExceeded || err == context.Canceled {
 					return nil
@@ -124,6 +132,29 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 
 	// we failed to find a leasable address
 	return nil
+}
+
+// releaseOutsideRanges releases the lease or reservation of an IP address
+// outside the ranges that keeps the client with mac from reserving an address
+// of the ranges, as err says, and reports whether it did. Storages hold a
+// single lease or reservation per client, and the client asks for a new
+// address. Nothing else releases such an address, for example the static
+// address of a client that was removed from the configuration.
+func (p *RangePlugin) releaseOutsideRanges(ctx context.Context, mac net.HardwareAddr, err error, db lease.Database) bool {
+	var duplicate *storage.ErrDuplicateClientID
+	if !errors.As(err, &duplicate) || duplicate.IP == nil || p.Ranges.Contains(duplicate.IP) {
+		return false
+	}
+
+	l := log.With(ctx, p.L)
+	if err := db.Release(ctx, duplicate.IP); err != nil {
+		l.Errorf("%s: failed to release IP %s outside the ranges: %s", mac, duplicate.IP, err.Error())
+		return false
+	}
+
+	l.Infof("%s: released IP %s, which is outside the ranges, for a new address", mac, duplicate.IP)
+
+	return true
 }
 
 func (p *RangePlugin) findAndPrepareResponse(ctx context.Context, req, res *dhcpv4.DHCPv4, requested net.IP, db lease.Database) bool {

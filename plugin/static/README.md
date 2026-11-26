@@ -14,7 +14,7 @@ draft: false
 
 The *static* plugin allows configuration of static IP address based on the MAC address of the requesting client.
 
-The IP addresses are reserved for their clients in the lease database, so other plugins, like [*range*](../ranges), never lease them to other clients, even if they are part of one of their ranges. If another client already has a lease of a static IP address when NextDHCP starts, the lease is removed from the database: the client keeps using the address until it tries to renew the lease, which is refused, and then gets another address. The leases of static IP addresses are stored like other leases, so if an address is removed from the configuration, it stays leased to its client until the lease expires.
+The IP addresses are reserved for their clients in the lease database, so other plugins, like [*range*](../ranges), never lease them to other clients, even if they are part of one of their ranges. If another client already has a lease of a static IP address when NextDHCP starts, the lease is removed from the database: the client keeps using the address until it tries to renew the lease, which is refused, and then gets another address. The static plugin stores the lease of a static IP address each time its client requests it, like other leases. So if the address is removed from the configuration, it stays leased to the client until that lease expires: the client can renew it if it is part of a range, and gets another address otherwise.
 
 ## Syntax
 

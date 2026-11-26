@@ -242,9 +242,10 @@ func openOrCreateBuckets(tx *bbolt.Tx) (ipLeaseBucket *bbolt.Bucket, idToIPBucke
 func assertUniqueClient(bucket *bbolt.Bucket, clientID string, ip net.IP) error {
 	existingIP := bucket.Get([]byte(clientID))
 	if existingIP != nil && !net.IP(existingIP).Equal(ip) {
+		// values are only valid during the transaction, so copy the IP
 		return &storage.ErrDuplicateClientID{
 			ClientID: clientID,
-			IP:       net.IP(existingIP).To4(),
+			IP:       append(net.IP(nil), existingIP...).To4(),
 		}
 	}
 	return nil
