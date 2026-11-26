@@ -213,6 +213,21 @@ func (s *Server) reportFailure(err error) {
 	}
 }
 
+// removeStaticConflicts removes the stored leases that contradict the static
+// reservations of the server's lease database, if it supports them. It only
+// logs a failure: the database also removes such a lease when its client
+// asks for the address.
+func (s *Server) removeStaticConflicts() {
+	db, ok := s.Database.(lease.StaticReserver)
+	if !ok {
+		return
+	}
+
+	if err := db.RemoveStaticConflicts(context.Background()); err != nil {
+		s.logger.Errorf("failed to remove leases of static IP addresses of subnet %s: %s", s.Network.String(), err.Error())
+	}
+}
+
 // stop closes the server's connection and waits for the requests being
 // served to finish.
 func (s *Server) stop() error {

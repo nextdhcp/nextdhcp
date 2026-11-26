@@ -32,9 +32,13 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 		return errors.New("static must be provisioned by a DHCP server")
 	}
 
-	db := s.Config.Database
-	if db == nil {
+	if s.Config.Database == nil {
 		return errors.New("static requires the lease database of the DHCP server")
+	}
+
+	db, ok := s.Config.Database.(lease.StaticReserver)
+	if !ok {
+		return fmt.Errorf("static requires a lease database with static reservations, which %T doesn't support", s.Config.Database)
 	}
 
 	s.L = ctx.Logger().Sugar()

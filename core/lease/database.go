@@ -64,7 +64,11 @@ type Database interface {
 
 	// DeleteReservation deletes a IP address reservation
 	DeleteReservation(context.Context, net.IP, *Client) error
+}
 
+// StaticReserver is implemented by lease databases that support static
+// reservations, which the static plugin needs for the addresses it assigns.
+type StaticReserver interface {
 	// ReserveStatic reserves the IPv4 address of r for its client,
 	// identified by its hardware address, for as long as the database
 	// is open, like a static address configured for the client: Reserve

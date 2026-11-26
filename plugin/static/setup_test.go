@@ -87,4 +87,13 @@ func TestStaticPluginReservesAddresses(t *testing.T) {
 
 	p := &Plugin{Addresses: map[string]net.IP{"00:aa:bb:cc:dd:ee": {127, 0, 0, 50}}}
 	assert.Error(t, p.Provision(dhcpserver.WithServer(test.NewContext(t), srv)))
+
+	// and the database must support static reservations
+	srv.Database = databaseOnly{test.NewServer(t).Database}
+	assert.ErrorContains(t, p.Provision(dhcpserver.WithServer(test.NewContext(t), srv)), "lease database with static reservations")
+}
+
+// databaseOnly is a lease database without static reservations.
+type databaseOnly struct {
+	lease.Database
 }

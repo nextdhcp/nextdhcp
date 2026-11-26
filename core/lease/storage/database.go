@@ -129,7 +129,7 @@ func (db *Database) deleteEntry(ctx context.Context, ip net.IP, clientID string)
 	return nil
 }
 
-// ReserveStatic implements lease.Database
+// ReserveStatic implements lease.StaticReserver
 func (db *Database) ReserveStatic(ctx context.Context, r lease.ReservedAddress) error {
 	if err := db.static.add(r); err != nil {
 		return err
@@ -140,7 +140,7 @@ func (db *Database) ReserveStatic(ctx context.Context, r lease.ReservedAddress) 
 	return nil
 }
 
-// RemoveStaticConflicts implements lease.Database
+// RemoveStaticConflicts implements lease.StaticReserver
 func (db *Database) RemoveStaticConflicts(ctx context.Context) error {
 	l := dhcpLog.With(ctx, db.l)
 
@@ -340,3 +340,9 @@ func (db *Database) Release(ctx context.Context, ip net.IP) error {
 
 	return db.store.Delete(ctx, ip, "")
 }
+
+// Interface guards
+var (
+	_ lease.Database       = (*Database)(nil)
+	_ lease.StaticReserver = (*Database)(nil)
+)
