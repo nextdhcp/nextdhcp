@@ -5,7 +5,7 @@ linters:
   default: standard
   settings:
     staticcheck:
-      # The default checks, and QF1008, which suggests leaving out embedded
+      # The default checks, except QF1008, which suggests leaving out embedded
       # fields from selectors. Naming them can be clearer, like a.RawAddr.IP
       # next to a.Local.IP for the two addresses of a socket.Addr.
       checks:
