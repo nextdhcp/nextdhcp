@@ -79,10 +79,7 @@ func (p *RangePlugin) Wrap(next plugin.Handler) plugin.Handler {
 func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr, requested net.IP, db lease.Database) net.IP {
 	l := log.With(ctx, p.L)
 
-	cli := lease.Client{
-		HwAddr: mac,
-		ID:     mac.String(),
-	}
+	cli := lease.NewClient(mac)
 
 	// if there's a requested IP address will try that first if it's part of our range
 	// if there's a requested address that's not in our ranges will do nothing as another
@@ -177,7 +174,7 @@ func (p *RangePlugin) findAndPrepareResponse(ctx context.Context, req, res *dhcp
 func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	l := log.With(ctx, p.L)
 	db := lease.GetDatabase(ctx)
-	cli := lease.Client{HwAddr: req.ClientHWAddr}
+	cli := lease.NewClient(req.ClientHWAddr)
 
 	if dhcpserver.Discover(req) {
 		if p.findAndPrepareResponse(ctx, req, res, req.RequestedIPAddress(), db) {

@@ -69,7 +69,7 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 		addresses[mac.String()] = ip
 		clients[ip.String()] = key
 		reservations = append(reservations, lease.ReservedAddress{
-			Client: lease.Client{HwAddr: mac, ID: mac.String()},
+			Client: lease.NewClient(mac),
 			IP:     ip,
 		})
 	}

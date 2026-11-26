@@ -61,13 +61,13 @@ func (s *staticReservations) add(r lease.ReservedAddress) error {
 		return errors.New("static reservations don't expire")
 	}
 
-	clientID := r.HwAddr.String()
+	id := idOf(r.Client)
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	if existing, ok := s.byIP[addr]; ok {
-		if owner := existing.HwAddr.String(); owner != clientID {
+		if owner := idOf(existing.Client); owner != id {
 			return fmt.Errorf("IP %s is already statically reserved for client %s", addr, owner)
 		}
 
@@ -75,8 +75,8 @@ func (s *staticReservations) add(r lease.ReservedAddress) error {
 	}
 
 	for other, existing := range s.byIP {
-		if existing.HwAddr.String() == clientID {
-			return fmt.Errorf("client %s already has a static reservation for IP %s", clientID, other)
+		if idOf(existing.Client) == id {
+			return fmt.Errorf("client %s already has a static reservation for IP %s", id, other)
 		}
 	}
 
@@ -113,8 +113,8 @@ type staticAddress struct {
 // refuseOthers fails with lease.ErrAddressReserved if cli isn't the client
 // the address is reserved for.
 func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) error {
-	owner := a.r.HwAddr.String()
-	if cli.HwAddr.String() == owner {
+	owner := idOf(a.r.Client)
+	if idOf(cli) == owner {
 		return nil
 	}
 
@@ -150,14 +150,14 @@ func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 		return 0, err
 	}
 
-	clientID := cli.HwAddr.String()
+	id := idOf(cli)
 
-	otherIP, _, _, err := a.db.store.FindByID(ctx, clientID)
+	otherIP, _, _, err := a.db.store.FindByID(ctx, string(id))
 	switch {
 	case err == nil && !otherIP.Equal(a.r.IP):
-		dhcpLog.With(ctx, a.db.l).Infof("removing lease or reservation of IP %s for client %s: the client leases its static IP %s", otherIP, clientID, a.r.IP)
+		dhcpLog.With(ctx, a.db.l).Infof("removing lease or reservation of IP %s for client %s: the client leases its static IP %s", otherIP, id, a.r.IP)
 
-		if err := a.db.deleteEntry(ctx, otherIP, clientID); err != nil {
+		if err := a.db.deleteEntry(ctx, otherIP, id); err != nil {
 			return 0, err
 		}
 
@@ -186,7 +186,7 @@ func (a *staticAddress) deleteReservation(context.Context, *lease.Client) error 
 // renew its lease or reservation of the address, and as a client has a
 // single one, it would keep that client from getting another address.
 func (a *staticAddress) removeConflict(ctx context.Context) error {
-	existingClient, leased, _, err := a.db.store.FindByIP(ctx, a.r.IP)
+	stored, leased, _, err := a.db.store.FindByIP(ctx, a.r.IP)
 	switch {
 	case IsNotFound(err):
 		return nil
@@ -194,14 +194,14 @@ func (a *staticAddress) removeConflict(ctx context.Context) error {
 		return err
 	}
 
-	owner := a.r.HwAddr.String()
-	if existingClient == owner && leased {
+	existing, owner := clientID(stored), idOf(a.r.Client)
+	if existing == owner && leased {
 		return nil
 	}
 
-	if existingClient != owner {
-		dhcpLog.With(ctx, a.db.l).Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existingClient, owner)
+	if existing != owner {
+		dhcpLog.With(ctx, a.db.l).Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
 	}
 
-	return a.db.deleteEntry(ctx, a.r.IP, existingClient)
+	return a.db.deleteEntry(ctx, a.r.IP, existing)
 }

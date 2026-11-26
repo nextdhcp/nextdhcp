@@ -18,6 +18,14 @@ type Database struct {
 	static staticReservations
 }
 
+// clientID identifies a client in storages: by its hardware address.
+type clientID string
+
+// idOf returns the ID of cli.
+func idOf(cli lease.Client) clientID {
+	return clientID(cli.HwAddr.String())
+}
+
 // NewDatabase creates a new database that uses store for persistence. It
 // discards the errors it logs until a logger is set with SetLogger.
 func NewDatabase(store LeaseStorage) *Database {
@@ -166,29 +174,29 @@ func (db *Database) RemoveStaticConflicts(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// takeOver removes the expired lease or reservation of ip for the client with
-// existingClient, so that the client with clientID can get the address.
-// Storages can't change the client of an entry, and hold one entry per
-// client, so it keeps the expired entry, and fails with ErrDuplicateClientID,
-// if the client with clientID has an entry for another address.
-func (db *Database) takeOver(ctx context.Context, ip net.IP, existingClient, clientID string) error {
-	clientIP, _, _, err := db.store.FindByID(ctx, clientID)
+// takeOver removes the expired lease or reservation of ip for the client
+// existing, so that the client id can get the address. Storages can't change
+// the client of an entry, and hold one entry per client, so it keeps the
+// expired entry, and fails with ErrDuplicateClientID, if the client id has an
+// entry for another address.
+func (db *Database) takeOver(ctx context.Context, ip net.IP, existing, id clientID) error {
+	clientIP, _, _, err := db.store.FindByID(ctx, string(id))
 	switch {
 	case err == nil:
-		return &ErrDuplicateClientID{ClientID: clientID, IP: clientIP}
+		return &ErrDuplicateClientID{ClientID: string(id), IP: clientIP}
 	case !IsNotFound(err):
 		return err
 	}
 
-	dhcpLog.With(ctx, db.l).Debugf("removing expired entry of IP %s for client %s", ip, existingClient)
+	dhcpLog.With(ctx, db.l).Debugf("removing expired entry of IP %s for client %s", ip, existing)
 
-	return db.deleteEntry(ctx, ip, existingClient)
+	return db.deleteEntry(ctx, ip, existing)
 }
 
-// deleteEntry deletes the lease or reservation of ip for the client with
-// clientID from the storage, unless it's already gone.
-func (db *Database) deleteEntry(ctx context.Context, ip net.IP, clientID string) error {
-	if err := db.store.Delete(ctx, ip, clientID); err != nil && !IsNotFound(err) {
+// deleteEntry deletes the lease or reservation of ip for the client id from
+// the storage, unless it's already gone.
+func (db *Database) deleteEntry(ctx context.Context, ip net.IP, id clientID) error {
+	if err := db.store.Delete(ctx, ip, string(id)); err != nil && !IsNotFound(err) {
 		return err
 	}
 
@@ -206,24 +214,25 @@ func (a *storedAddress) reserve(ctx context.Context, cli lease.Client) error {
 	db, ip := a.db, a.ip
 	l := dhcpLog.With(ctx, db.l)
 
-	clientID := cli.HwAddr.String()
+	id := idOf(cli)
 
-	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
+	stored, leased, expiration, err := db.store.FindByIP(ctx, ip)
+	existing := clientID(stored)
 	if err != nil && !IsNotFound(err) {
 		l.Debugf("failed to query IP storage for %s: %s", ip, err.Error())
 		return err
 	}
 
-	if err == nil && existingClient != clientID {
+	if err == nil && existing != id {
 		// IP address either leased or reserved for a different client
 		if time.Now().Before(expiration) {
-			l.Debugf("address %s already reserved for %s", ip, existingClient)
+			l.Debugf("address %s already reserved for %s", ip, existing)
 			return lease.ErrAddressReserved
 		}
 
 		// the entry of the other client expired, so reserve the IP address
 		// for this client instead
-		if err := db.takeOver(ctx, ip, existingClient, clientID); err != nil {
+		if err := db.takeOver(ctx, ip, existing, id); err != nil {
 			return err
 		}
 	} else if err == nil {
@@ -235,36 +244,37 @@ func (a *storedAddress) reserve(ctx context.Context, cli lease.Client) error {
 		if time.Now().After(expiration) {
 			if !leased {
 				l.Debugf("updating expired reservation for %s", ip)
-				if err := db.store.Update(ctx, ip, clientID, false, time.Now().Add(time.Minute)); err != nil {
+				if err := db.store.Update(ctx, ip, string(id), false, time.Now().Add(time.Minute)); err != nil {
 					return err
 				}
 			} else {
 				l.Warnf("Reserving already leased IP address %s for client %s", ip.String(), cli.String())
 			}
 		} else {
-			l.Debugf("IP %s already reserved for %s", ip.String(), clientID)
+			l.Debugf("IP %s already reserved for %s", ip.String(), id)
 		}
 
 		return nil
 	}
 
-	return db.store.Create(ctx, ip, clientID, false, time.Now().Add(time.Minute))
+	return db.store.Create(ctx, ip, string(id), false, time.Now().Add(time.Minute))
 }
 
 func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
 	db, ip := a.db, a.ip
 	l := dhcpLog.With(ctx, db.l)
 
-	clientID := cli.HwAddr.String()
+	id := idOf(cli)
 
-	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
+	stored, leased, expiration, err := db.store.FindByIP(ctx, ip)
+	existing := clientID(stored)
 	if err != nil && !IsNotFound(err) {
 		l.Errorf("failed to query lease storage for %s: %s", ip.String(), err.Error())
 		return 0, err
 	}
 
 	if err == nil { // There's an existing lease/reservation for that IP
-		if existingClient == clientID {
+		if existing == id {
 			// A reservation of the client becomes a lease with the full lease
 			// time, and so does its lease if it's renewed or expired.
 			// Otherwise the client keeps the lease it has, unless less than a
@@ -274,7 +284,7 @@ func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 			if !leased || renew || remaining < time.Second {
 				newExpiration := time.Now().Add(leaseTime)
 				l.Debugf("updating existing lease for IP %s (expiration=%s new-expiration=%s)", ip.String(), expiration, newExpiration)
-				return leaseTime, db.store.Update(ctx, ip, existingClient, true, newExpiration)
+				return leaseTime, db.store.Update(ctx, ip, string(id), true, newExpiration)
 			}
 
 			l.Debugf("using existing lease for IP %s", ip.String())
@@ -285,24 +295,24 @@ func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 		// IP address already leased for a different client
 		// we must not overwrite it if it's still valid
 		if time.Now().Before(expiration) {
-			l.Debugf("IP %s already leased for client %s", ip.String(), existingClient)
+			l.Debugf("IP %s already leased for client %s", ip.String(), existing)
 			return 0, lease.ErrAddressReserved
 		}
 
 		// IP lease already expired so we can take it over
-		l.Infof("IP %s entry for client %s expired, overwritting (leased = %v)", ip, cli, leased)
-		if err := db.takeOver(ctx, ip, existingClient, clientID); err != nil {
+		l.Infof("IP %s entry for client %s expired, overwritting (leased = %v)", ip, existing, leased)
+		if err := db.takeOver(ctx, ip, existing, id); err != nil {
 			return 0, err
 		}
 
 		// fallthrough
 	}
 
-	if err := db.store.Create(ctx, ip, clientID, true, time.Now().Add(leaseTime)); err != nil {
-		l.Errorf("failed to lease IP %s for client %s: %s", ip.String(), clientID, err.Error())
+	if err := db.store.Create(ctx, ip, string(id), true, time.Now().Add(leaseTime)); err != nil {
+		l.Errorf("failed to lease IP %s for client %s: %s", ip.String(), id, err.Error())
 		return 0, err
 	}
-	l.Debugf("leased IP %s for client %s", ip.String(), clientID)
+	l.Debugf("leased IP %s for client %s", ip.String(), id)
 
 	return leaseTime, nil
 }
@@ -312,17 +322,17 @@ func (a *storedAddress) release(ctx context.Context) error {
 }
 
 func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client) error {
-	clientID := ""
+	var id clientID
 	if cli != nil {
-		clientID = cli.HwAddr.String()
+		id = idOf(*cli)
 	}
 
-	existingClient, leased, _, err := a.db.store.FindByIP(ctx, a.ip)
+	stored, leased, _, err := a.db.store.FindByIP(ctx, a.ip)
 	if err != nil {
 		return err
 	}
 
-	if clientID != "" && clientID != existingClient {
+	if id != "" && id != clientID(stored) {
 		return ErrClientMismatch
 	}
 
@@ -330,7 +340,7 @@ func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client
 		return errors.New("reservation not found")
 	}
 
-	return a.db.store.Delete(ctx, a.ip, clientID)
+	return a.db.store.Delete(ctx, a.ip, string(id))
 }
 
 // Interface guards

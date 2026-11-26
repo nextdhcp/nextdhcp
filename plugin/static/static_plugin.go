@@ -75,7 +75,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 // when the client is told. If storing it fails, the client is still sent ip,
 // with the lease time configured.
 func (s *Plugin) storeLease(ctx context.Context, req, res *dhcpv4.DHCPv4, ip net.IP) {
-	cli := lease.Client{HwAddr: req.ClientHWAddr, ID: req.ClientHWAddr.String()}
+	cli := lease.NewClient(req.ClientHWAddr)
 
 	leaseTime, err := s.Config.Database.Lease(ctx, ip, cli, res.IPAddressLeaseTime(time.Hour), true)
 	if err != nil {

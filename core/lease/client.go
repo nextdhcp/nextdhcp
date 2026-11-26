@@ -17,6 +17,12 @@ type Client struct {
 	ID string
 }
 
+// NewClient returns the client with the hardware address mac, which lease
+// databases identify clients by, and which is also its ID.
+func NewClient(mac net.HardwareAddr) Client {
+	return Client{HwAddr: mac, ID: mac.String()}
+}
+
 // String implements fmt.Stringer
 func (cli *Client) String() string {
 	return fmt.Sprintf("%s (hostname=%s, id=%s)", cli.HwAddr, cli.Hostname, cli.ID)
