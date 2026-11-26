@@ -9,6 +9,7 @@ import (
 	"net"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -63,10 +64,12 @@ type Server struct {
 	store  storage.LeaseStorage // the storage of the lease database
 	chain  plugin.Handler       // the first handler of the chain
 	logger *zap.SugaredLogger
+	failed chan<- error // receives the error that stops the server from serving
 
-	conn    net.PacketConn
-	serveWg sync.WaitGroup // the read loop
-	dhcpWg  sync.WaitGroup // requests being served
+	conn     net.PacketConn
+	stopping atomic.Bool    // set by stop, after which reading from conn fails
+	serveWg  sync.WaitGroup // the read loop
+	dhcpWg   sync.WaitGroup // requests being served
 }
 
 // Provision resolves the subnet and the interface, opens the lease database
@@ -178,17 +181,36 @@ func (s *Server) start() error {
 		return fmt.Errorf("failed to listen on %s (%s): %w", s.IP, s.iface.Name, err)
 	}
 	s.conn = conn
+	s.stopping.Store(false)
 
 	s.serveWg.Add(1)
 	go func() {
 		defer s.serveWg.Done()
 
-		if err := s.ServePacket(conn); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.logger.Errorf("stopped serving subnet %s: %s", s.Network.String(), err.Error())
+		err := s.ServePacket(conn)
+		if errors.Is(err, net.ErrClosed) || s.stopping.Load() {
+			return
 		}
+
+		err = fmt.Errorf("stopped serving subnet %s: %w", s.Network.String(), err)
+		s.logger.Error(err.Error())
+		s.reportFailure(err)
 	}()
 
 	return nil
+}
+
+// reportFailure sends err to the channel of failures, unless the error of
+// another server is still waiting there.
+func (s *Server) reportFailure(err error) {
+	if s.failed == nil {
+		return
+	}
+
+	select {
+	case s.failed <- err:
+	default:
+	}
 }
 
 // stop closes the server's connection and waits for the requests being
@@ -198,6 +220,7 @@ func (s *Server) stop() error {
 		return nil
 	}
 
+	s.stopping.Store(true)
 	err := s.conn.Close()
 	s.serveWg.Wait()
 	s.dhcpWg.Wait()

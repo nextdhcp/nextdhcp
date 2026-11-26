@@ -2,6 +2,7 @@ package dhcpserver_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -27,7 +28,9 @@ type packet struct {
 type fakeConn struct {
 	requests  chan packet
 	responses chan packet
+	readErrs  chan error // errors for ReadFrom to return
 	closed    chan struct{}
+	closeErr  error // returned by ReadFrom once closed, instead of net.ErrClosed
 	closeOnce sync.Once
 }
 
@@ -35,6 +38,7 @@ func newFakeConn() *fakeConn {
 	return &fakeConn{
 		requests:  make(chan packet),
 		responses: make(chan packet, 16),
+		readErrs:  make(chan error),
 		closed:    make(chan struct{}),
 	}
 }
@@ -43,7 +47,13 @@ func (c *fakeConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	select {
 	case p := <-c.requests:
 		return copy(b, p.payload), p.addr, nil
+	case err := <-c.readErrs:
+		return 0, nil, err
 	case <-c.closed:
+		if c.closeErr != nil {
+			return 0, nil, c.closeErr
+		}
+
 		return 0, nil, &net.OpError{Op: "read", Net: "fake", Err: net.ErrClosed}
 	}
 }
@@ -339,6 +349,54 @@ func TestStaticAddressReserved(t *testing.T) {
 		// so the lease of the other client is kept
 		conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
 		leaseAddress(t, conn, thirdClient, "127.0.0.11")
+	})
+}
+
+// TestServeFailure checks that the app reports a server that stops serving
+// because reading requests fails, but not a server that is stopped.
+func TestServeFailure(t *testing.T) {
+	start := func(t *testing.T, conn *fakeConn) *dhcpserver.App {
+		t.Helper()
+
+		app := provisionApp(t, servingDhcpfile, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+			return conn, nil
+		})
+		require.NoError(t, app.Start())
+
+		return app
+	}
+
+	t.Run("read error", func(t *testing.T) {
+		conn := newFakeConn()
+		app := start(t, conn)
+		t.Cleanup(func() { assert.NoError(t, app.Stop()) })
+
+		conn.readErrs <- errors.New("the interface went away")
+
+		select {
+		case err := <-app.Failed():
+			assert.ErrorContains(t, err, "stopped serving subnet 127.0.0.0/8")
+			assert.ErrorContains(t, err, "the interface went away")
+		case <-time.After(5 * time.Second):
+			t.Fatal("the failure wasn't reported")
+		}
+	})
+
+	t.Run("stopped", func(t *testing.T) {
+		// reading fails once the server is stopped, but not with
+		// net.ErrClosed
+		conn := newFakeConn()
+		conn.closeErr = errors.New("use of closed file")
+		app := start(t, conn)
+
+		// Stop returns once the server stopped serving
+		require.NoError(t, app.Stop())
+
+		select {
+		case err := <-app.Failed():
+			t.Errorf("stopping the server was reported as a failure: %s", err)
+		default:
+		}
 	})
 }
 

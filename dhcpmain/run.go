@@ -7,6 +7,7 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"go.uber.org/zap"
 )
 
 var conf string
@@ -31,8 +32,26 @@ func Run() {
 		caddy.Log().Fatal(err.Error())
 	}
 
-	// The process exits once a signal stops it (see caddy.TrapSignals)
-	select {}
+	app, err := caddy.ActiveContext().AppIfConfigured("dhcp")
+	if err != nil {
+		caddy.Log().Fatal(err.Error())
+	}
+
+	// The process exits once a signal stops it (see caddy.TrapSignals), or
+	// with an error once a server stops serving, so that a service manager
+	// can restart it
+	err = <-app.(*dhcpserver.App).Failed()
+	if caddy.Exiting() {
+		// a signal is stopping the process already
+		select {}
+	}
+
+	caddy.Log().Error("exiting because a server stopped serving", zap.Error(err))
+	if err := caddy.Stop(); err != nil {
+		caddy.Log().Error("failed to stop", zap.Error(err))
+	}
+
+	os.Exit(1)
 }
 
 // loadConfig reads the Dhcpfile and adapts it to a Caddy JSON config.
