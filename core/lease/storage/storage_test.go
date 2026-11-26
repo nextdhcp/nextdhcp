@@ -230,3 +230,35 @@ func TestLeaseAlmostExpired(t *testing.T) {
 		})
 	}
 }
+
+// TestReleaseStaticConflict checks that releasing a statically reserved IP
+// address removes a stored lease of it that RemoveStaticConflicts didn't
+// remove, for example because it failed, but keeps the static reservation.
+func TestReleaseStaticConflict(t *testing.T) {
+	ctx := context.Background()
+	staticIP := net.IP{10, 0, 0, 1}
+	staticClient := lease.Client{HwAddr: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}}
+	other := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+
+	for _, driver := range []string{"memory", "bolt"} {
+		t.Run(driver, func(t *testing.T) {
+			store := openStorage(t, driver)
+			require.NoError(t, store.Create(ctx, staticIP, other.HwAddr.String(), true, time.Now().Add(time.Hour)))
+
+			db := storage.NewDatabase(store)
+			require.NoError(t, db.ReserveStatic(ctx, net.ParseIP("10.0.0.1"), staticClient))
+
+			require.NoError(t, db.Release(ctx, staticIP))
+
+			_, _, _, err := store.FindByIP(ctx, staticIP)
+			assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
+
+			// so the other client can get another address
+			assert.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 2}, other))
+			assert.ErrorIs(t, db.Reserve(ctx, staticIP, other), lease.ErrAddressReserved)
+
+			// releasing it again still succeeds
+			assert.NoError(t, db.Release(ctx, staticIP))
+		})
+	}
+}

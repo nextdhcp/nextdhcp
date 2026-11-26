@@ -72,8 +72,9 @@ type Database interface {
 	// other client, and succeed for the client without storing
 	// anything. Static reservations are kept in memory only, so they
 	// must be made again whenever the database is opened. Release
-	// succeeds for a statically reserved IP address without doing
-	// anything, DeleteReservation fails with ErrStaticReservation, and
+	// succeeds for a statically reserved IP address, removing any
+	// stored lease or reservation of it but not the static
+	// reservation, DeleteReservation fails with ErrStaticReservation, and
 	// ReservedAddresses returns static reservations without an
 	// expiration time. ReserveStatic fails if the IP address or the
 	// client already has a different static reservation

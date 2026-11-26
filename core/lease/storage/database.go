@@ -384,10 +384,12 @@ func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease
 
 // Release implements lease.Database
 func (db *Database) Release(ctx context.Context, ip net.IP) error {
-	// leases of statically reserved addresses aren't stored, and releasing
-	// them doesn't remove the static reservation
+	// Leases of statically reserved addresses aren't stored, and releasing
+	// them doesn't remove the static reservation. A stored lease of such an
+	// address is one that RemoveStaticConflicts didn't remove, maybe because
+	// it failed, so remove it.
 	if _, ok := db.staticOwner(ip); ok {
-		return nil
+		return db.deleteEntry(ctx, ip, "")
 	}
 
 	return db.store.Delete(ctx, ip, "")
