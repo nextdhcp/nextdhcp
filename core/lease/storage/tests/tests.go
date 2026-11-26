@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,7 +65,7 @@ func Run(t *testing.T, factory StorageFactory, teardown TeardownFunc) {
 		assert.Error(t, err, "ClientIDs must not be allowed to be re-used")
 		ecid, ok := err.(*storage.ErrDuplicateClientID)
 		assert.True(t, ok, "invalid error type returned")
-		assert.Equal(t, "client-1", ecid.ClientID)
+		assert.Equal(t, lease.ClientID("client-1"), ecid.ClientID)
 		assert.Equal(t, 1, count())
 
 		err = instance.Create(ctx, net.IP{10, 0, 0, 3}, "client-3", true, alreadyExpired)
@@ -75,7 +76,7 @@ func Run(t *testing.T, factory StorageFactory, teardown TeardownFunc) {
 	t.Run("FindByIP", func(t *testing.T) {
 		id, leased, expires, err := instance.FindByIP(ctx, net.IP{10, 0, 0, 1})
 		assert.NoError(t, err)
-		assert.Equal(t, "client-1", id)
+		assert.Equal(t, lease.ClientID("client-1"), id)
 		assert.True(t, leased)
 		assert.InDelta(t, time.Now().Add(-time.Minute).Unix(), expires.Unix(), 1)
 

@@ -66,7 +66,7 @@ func EmitEvent(event EventName, info interface{}) {
 func EmitLeaseEvent(event EventName, l *lease.Lease) {
 	if _, ok := validLeaseEvents[event]; !ok {
 		log.Println("invalid lease event type")
-		log.Println(debug.Stack())
+		log.Println(string(debug.Stack()))
 		return
 	}
 

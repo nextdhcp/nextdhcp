@@ -9,6 +9,8 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage/drivers/memory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,26 +43,33 @@ func NewContext(t *testing.T) caddy.Context {
 	return ctx
 }
 
+// NewServer returns a server for TestSubnet, like the servers Provision
+// provisions modules for. Its lease database keeps leases in memory.
+func NewServer(t *testing.T) *dhcpserver.Server {
+	t.Helper()
+
+	ip, ipNet, err := net.ParseCIDR(TestSubnet)
+	require.NoError(t, err)
+
+	return &dhcpserver.Server{
+		Subnet:   TestSubnet,
+		IP:       ip,
+		Network:  *ipNet,
+		Database: storage.NewDatabase(memory.New()),
+	}
+}
+
 // Provision provisions the handler module m the way a server for TestSubnet
 // does when it loads m from its JSON config: it encodes m to JSON, decodes
 // the JSON into a new instance of the module and provisions the new
-// instance, which it returns.
+// instance, which it returns. The server is one NewServer returns.
 func Provision(t *testing.T, m caddy.Module) (caddy.Module, error) {
 	t.Helper()
 
 	raw, err := json.Marshal(m)
 	require.NoError(t, err)
 
-	ip, ipNet, err := net.ParseCIDR(TestSubnet)
-	require.NoError(t, err)
-
-	srv := &dhcpserver.Server{
-		Subnet:  TestSubnet,
-		IP:      ip,
-		Network: *ipNet,
-	}
-
-	ctx := dhcpserver.WithServer(NewContext(t), srv)
+	ctx := dhcpserver.WithServer(NewContext(t), NewServer(t))
 
 	mod, err := ctx.LoadModuleByID(string(m.CaddyModule().ID), raw)
 	if err != nil {

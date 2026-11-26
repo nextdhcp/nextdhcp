@@ -7,41 +7,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type fakeLeaseStorage struct {
-	findByIPClientID string
+	findByIPClientID lease.ClientID
 	findByIPLeased   bool
 	findByIPErr      error
 
 	deleteCalls    int
 	deleteIP       net.IP
-	deleteClientID string
+	deleteClientID lease.ClientID
 	deleteErr      error
 }
 
-func (f *fakeLeaseStorage) Create(ctx context.Context, ip net.IP, clientID string, leased bool, expiration time.Time) error {
+func (f *fakeLeaseStorage) Create(ctx context.Context, ip net.IP, clientID lease.ClientID, leased bool, expiration time.Time) error {
 	return errors.New("not implemented")
 }
 
-func (f *fakeLeaseStorage) Delete(ctx context.Context, ip net.IP, clientID string) error {
+func (f *fakeLeaseStorage) Delete(ctx context.Context, ip net.IP, clientID lease.ClientID) error {
 	f.deleteCalls++
 	f.deleteIP = append(net.IP{}, ip...)
 	f.deleteClientID = clientID
 	return f.deleteErr
 }
 
-func (f *fakeLeaseStorage) Update(ctx context.Context, ip net.IP, clientID string, leased bool, expiration time.Time) error {
+func (f *fakeLeaseStorage) Update(ctx context.Context, ip net.IP, clientID lease.ClientID, leased bool, expiration time.Time) error {
 	return errors.New("not implemented")
 }
 
-func (f *fakeLeaseStorage) FindByIP(ctx context.Context, ip net.IP) (string, bool, time.Time, error) {
+func (f *fakeLeaseStorage) FindByIP(ctx context.Context, ip net.IP) (lease.ClientID, bool, time.Time, error) {
 	return f.findByIPClientID, f.findByIPLeased, time.Time{}, f.findByIPErr
 }
 
-func (f *fakeLeaseStorage) FindByID(ctx context.Context, clientID string) (net.IP, bool, time.Time, error) {
+func (f *fakeLeaseStorage) FindByID(ctx context.Context, clientID lease.ClientID) (net.IP, bool, time.Time, error) {
 	return nil, false, time.Time{}, errors.New("not implemented")
 }
 
@@ -49,7 +50,7 @@ func (f *fakeLeaseStorage) ListIPs(ctx context.Context) ([]net.IP, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeLeaseStorage) ListIDs(ctx context.Context) ([]string, error) {
+func (f *fakeLeaseStorage) ListIDs(ctx context.Context) ([]lease.ClientID, error) {
 	return nil, errors.New("not implemented")
 }
 

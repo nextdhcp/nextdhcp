@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -31,12 +33,22 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 		return errors.New("static must be provisioned by a DHCP server")
 	}
 
+	if s.Config.Database == nil {
+		return errors.New("static requires the lease database of the DHCP server")
+	}
+
+	db, ok := s.Config.Database.(lease.StaticReserver)
+	if !ok {
+		return fmt.Errorf("static requires a lease database with static reservations, which %T doesn't support", s.Config.Database)
+	}
+
 	s.L = ctx.Logger().Sugar()
 
 	// ServeDHCP looks clients up by the canonical (lower case) form of their
 	// MAC address, so store the addresses by that form
 	addresses := make(map[string]net.IP, len(s.Addresses))
-	clients := make(map[string]string, len(s.Addresses))
+	owners := make(map[netip.Addr]lease.ClientID, len(s.Addresses))
+	reservations := make([]lease.ReservedAddress, 0, len(s.Addresses))
 	for key, ip := range s.Addresses {
 		mac, err := net.ParseMAC(key)
 		if err != nil {
@@ -51,15 +63,28 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("static IP address has already been configured for client %s", mac)
 		}
 
-		if other, ok := clients[ip.String()]; ok {
+		if other, ok := owners[addrOf(ip)]; ok {
 			return fmt.Errorf("IP %s already used for client %s", ip, other)
 		}
 
 		addresses[mac.String()] = ip
-		clients[ip.String()] = key
+		owners[addrOf(ip)] = lease.HardwareAddrID(mac)
+		reservations = append(reservations, lease.ReservedAddress{
+			Client: lease.NewClient(mac),
+			IP:     ip,
+		})
 	}
 
 	s.Addresses = addresses
+	s.owners = owners
+
+	// Reserve the addresses in the lease database, so other plugins, like
+	// range, don't lease them to other clients
+	for _, r := range reservations {
+		if err := db.ReserveStatic(ctx, r); err != nil {
+			return fmt.Errorf("failed to reserve static IP %s for client %s: %w", r.IP, r.ID, err)
+		}
+	}
 
 	return nil
 }

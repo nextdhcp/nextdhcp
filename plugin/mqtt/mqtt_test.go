@@ -26,20 +26,42 @@ type publishedMessage struct {
 // fakeBroker is an MQTT broker that accepts all clients and records the
 // messages they publish with QoS 0.
 type fakeBroker struct {
-	ln        net.Listener
-	conns     atomic.Int32
-	handlers  sync.WaitGroup
-	published chan publishedMessage
+	ln          net.Listener
+	conns       atomic.Int32
+	handlers    sync.WaitGroup
+	published   chan publishedMessage
+	disconnects chan struct{} // receives a value for each DISCONNECT packet
+
+	// If release is set, the broker sends a value to connects when it gets
+	// a CONNECT packet, and answers CONNECT packets only once release is
+	// closed: it accepts the connections if accept is true, and closes them
+	// otherwise. Clients may try to connect more than once.
+	connects chan struct{}
+	release  chan struct{}
+	accept   bool
 }
 
 func newFakeBroker(t *testing.T) *fakeBroker {
+	return startBroker(t, new(fakeBroker))
+}
+
+// newHoldingBroker returns a broker that answers CONNECT packets only once
+// the test closes its release channel.
+func newHoldingBroker(t *testing.T, accept bool) *fakeBroker {
+	return startBroker(t, &fakeBroker{
+		connects: make(chan struct{}, 1),
+		release:  make(chan struct{}),
+		accept:   accept,
+	})
+}
+
+func startBroker(t *testing.T, b *fakeBroker) *fakeBroker {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	b := &fakeBroker{
-		ln:        ln,
-		published: make(chan publishedMessage, 16),
-	}
+	b.ln = ln
+	b.published = make(chan publishedMessage, 16)
+	b.disconnects = make(chan struct{}, 16)
 
 	go b.serve()
 	t.Cleanup(func() { _ = ln.Close() })
@@ -77,6 +99,18 @@ func (b *fakeBroker) handle(conn net.Conn) {
 
 		switch header >> 4 {
 		case 1: // CONNECT
+			if b.release != nil {
+				select {
+				case b.connects <- struct{}{}:
+				default:
+				}
+
+				<-b.release
+				if !b.accept {
+					return
+				}
+			}
+
 			_, _ = conn.Write([]byte{0x20, 0x02, 0x00, 0x00}) // CONNACK, accepted
 		case 3: // PUBLISH
 			n := int(binary.BigEndian.Uint16(body))
@@ -87,6 +121,7 @@ func (b *fakeBroker) handle(conn net.Conn) {
 		case 12: // PINGREQ
 			_, _ = conn.Write([]byte{0xd0, 0x00}) // PINGRESP
 		case 14: // DISCONNECT
+			b.disconnects <- struct{}{}
 			return
 		}
 	}
@@ -173,4 +208,66 @@ func TestMqttNoConnectionAfterCleanup(t *testing.T) {
 	_, _, err = m.getClient(m.configs[0])
 	assert.Error(t, err)
 	assert.Equal(t, int32(0), broker.conns.Load())
+}
+
+// TestMqttCleanupDuringConnect checks that Cleanup doesn't wait for a
+// connection that is still being opened, and that such a connection is
+// closed if it opens after all.
+func TestMqttCleanupDuringConnect(t *testing.T) {
+	for _, accept := range []bool{false, true} {
+		t.Run(fmt.Sprintf("accept=%v", accept), func(t *testing.T) {
+			broker := newHoldingBroker(t, accept)
+
+			m, err := makeMqttPlugin(t, fmt.Sprintf("mqtt {\n broker %s\n topic some/topic\n}", broker.url()))
+			require.NoError(t, err)
+
+			connected := make(chan error, 1)
+			go func() {
+				_, _, err := m.getClient(m.configs[0])
+				connected <- err
+			}()
+
+			select {
+			case <-broker.connects:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the client didn't connect")
+			}
+
+			cleanedUp := make(chan error, 1)
+			go func() { cleanedUp <- m.Cleanup() }()
+
+			select {
+			case err := <-cleanedUp:
+				require.NoError(t, err)
+			case <-time.After(time.Second):
+				t.Fatal("Cleanup waits for the connection being opened")
+			}
+
+			close(broker.release)
+
+			select {
+			case err := <-connected:
+				if accept {
+					assert.ErrorIs(t, err, errConnectionClosed)
+				} else {
+					assert.Error(t, err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("getClient didn't return")
+			}
+
+			if accept {
+				select {
+				case <-broker.disconnects:
+				case <-time.After(5 * time.Second):
+					t.Fatal("the connection opened after Cleanup wasn't closed")
+				}
+			}
+
+			conn := m.configs[0].conn
+			conn.l.Lock()
+			defer conn.l.Unlock()
+			assert.Nil(t, conn.c)
+		})
+	}
 }

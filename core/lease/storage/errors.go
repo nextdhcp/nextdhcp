@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+
+	"github.com/nextdhcp/nextdhcp/core/lease"
 )
 
 type (
@@ -14,14 +16,14 @@ type (
 		IP net.IP
 
 		// ClientID may hold the ID of the client that has the IP assigned
-		ClientID string
+		ClientID lease.ClientID
 	}
 
 	// ErrDuplicateClientID is returned if the client ID already has a
 	// IP lease assigned
 	ErrDuplicateClientID struct {
 		// ClientID is the client ID that is used multiple times
-		ClientID string
+		ClientID lease.ClientID
 
 		// IP may hold the IP address used by the client
 		IP net.IP

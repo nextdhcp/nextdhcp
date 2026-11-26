@@ -29,6 +29,32 @@ func TestReservedAddressExpired(t *testing.T) {
 	assert.False(t, r.Expired(time.Now().Add(time.Hour*24*356)))
 }
 
+func TestReservedAddressClone(t *testing.T) {
+	expires := time.Now().Add(time.Minute)
+	r := ReservedAddress{
+		Client: Client{
+			Hostname: "hostname",
+			ID:       "id",
+			HwAddr:   net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+		},
+		IP:      net.IP{192, 168, 0, 1},
+		Expires: &expires,
+	}
+
+	c := r.Clone()
+	assert.Equal(t, r, c)
+
+	c.HwAddr[0] = 0x00
+	c.IP[0] = 10
+	*c.Expires = c.Expires.Add(time.Hour)
+	assert.Equal(t, byte(0xaa), r.HwAddr[0])
+	assert.Equal(t, byte(192), r.IP[0])
+	assert.Equal(t, expires, *r.Expires)
+
+	r.Expires = nil
+	assert.Nil(t, r.Clone().Expires)
+}
+
 func makeReservedAddressList() ReservedAddressList {
 	list := []ReservedAddress{}
 	for i := 0; i < 10; i++ {
@@ -36,7 +62,7 @@ func makeReservedAddressList() ReservedAddressList {
 		list = append(list, ReservedAddress{
 			Client: Client{
 				Hostname: fmt.Sprintf("host-%d", i),
-				ID:       fmt.Sprintf("id-%d", i),
+				ID:       ClientID(fmt.Sprintf("id-%d", i)),
 				HwAddr:   net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, byte(i)},
 			},
 			IP:      net.IP{10, 0, 0, byte(i)},
@@ -96,12 +122,12 @@ func TestReservedAddressList(t *testing.T) {
 
 	t.Run("FindID", func(t *testing.T) {
 		for _, c := range cases {
-			host := fmt.Sprintf("id-%d", c.i)
+			id := ClientID(fmt.Sprintf("id-%d", c.i))
 
 			if c.e {
-				assert.NotNil(t, list.FindID(host))
+				assert.NotNil(t, list.FindID(id))
 			} else {
-				assert.Nil(t, list.FindID(host))
+				assert.Nil(t, list.FindID(id))
 			}
 		}
 	})

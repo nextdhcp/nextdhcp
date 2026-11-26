@@ -17,6 +17,8 @@ type App struct {
 	// Servers are the subnets to serve, one for each server block of the
 	// Dhcpfile.
 	Servers []*Server `json:"servers,omitempty"`
+
+	failed chan error
 }
 
 // CaddyModule returns the Caddy module information.
@@ -29,13 +31,25 @@ func (App) CaddyModule() caddy.ModuleInfo {
 
 // Provision provisions all servers.
 func (a *App) Provision(ctx caddy.Context) error {
+	a.failed = make(chan error, 1)
+
 	for _, s := range a.Servers {
+		s.failed = a.failed
+
 		if err := s.Provision(ctx); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// Failed returns a channel that receives an error when a server stops
+// serving because reading requests fails, for example because its network
+// interface went away. Servers don't recover from that, so NextDHCP exits
+// then, and a service manager can restart it. Call Failed after Provision.
+func (a *App) Failed() <-chan error {
+	return a.failed
 }
 
 // Start starts serving all subnets.
@@ -49,6 +63,12 @@ func (a *App) Start() error {
 
 			return err
 		}
+	}
+
+	// Only remove the leases that contradict static reservations once all
+	// servers serve, so they are kept if NextDHCP fails to start
+	for _, s := range a.Servers {
+		s.removeStaticConflicts()
 	}
 
 	if info := getStartupInfo(a.Servers); info != "" {

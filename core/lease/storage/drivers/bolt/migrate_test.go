@@ -64,7 +64,7 @@ func TestMigrateDb(t *testing.T) {
 	for _, ip := range ips {
 		cli, leased, expired, err := s.FindByIP(context.Background(), ip)
 		assert.NoError(t, err)
-		assert.NotEqual(t, "", cli)
+		assert.NotEmpty(t, cli)
 
 		if expired.Before(time.Now()) {
 			assert.True(t, leased)

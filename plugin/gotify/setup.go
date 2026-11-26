@@ -77,7 +77,7 @@ func (g *gotifyPlugin) makeNotification(cfg NotificationConfig) (*notification, 
 	}
 
 	if cfg.Message == nil && !cond.EmptyCondition() {
-		return nil, errors.New("Message must not be empty if a condition is set")
+		return nil, errors.New("message must not be empty if a condition is set")
 	}
 
 	n := &notification{
@@ -175,7 +175,7 @@ func (g *gotifyPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 		}
 
 		if cfg.Message == nil && !cond.EmptyCondition() {
-			return c.Err("Message must not be empty if a condition is set")
+			return c.Err("message must not be empty if a condition is set")
 		}
 
 		g.Notifications = append(g.Notifications, cfg)

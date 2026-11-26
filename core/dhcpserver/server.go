@@ -9,6 +9,7 @@ import (
 	"net"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -25,6 +26,13 @@ import (
 // responses through. Tests replace it so they don't need raw sockets.
 var listenDHCP = func(l log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
 	return socket.ListenDHCP(l, ip, ifc)
+}
+
+// probeAddress reports whether a device on the network of ifc, where the
+// server has the address ip, uses addr. Tests replace it so they don't need
+// raw sockets.
+var probeAddress = func(ctx context.Context, ifc *net.Interface, ip, addr net.IP) (bool, error) {
+	return socket.ProbeARP(ctx, ifc, ip, addr)
 }
 
 // Server serves DHCP clients on one subnet. Each server block of the Dhcpfile
@@ -59,14 +67,23 @@ type Server struct {
 	// reservations. It is opened when the server is provisioned.
 	Database lease.Database `json:"-"`
 
+	// ProbeAddress reports whether a device on the subnet uses ip. Plugins
+	// ask it before they give a client an address that, as far as the lease
+	// database knows, another client may still use. It is set when the server
+	// is provisioned, and asks with ARP, see socket.ProbeARP. Plugins assume
+	// that the address is in use if ProbeAddress is nil or fails.
+	ProbeAddress func(ctx context.Context, ip net.IP) (bool, error) `json:"-"`
+
 	iface  net.Interface        // the interface the subnet is served on
 	store  storage.LeaseStorage // the storage of the lease database
 	chain  plugin.Handler       // the first handler of the chain
 	logger *zap.SugaredLogger
+	failed chan<- error // receives the error that stops the server from serving
 
-	conn    net.PacketConn
-	serveWg sync.WaitGroup // the read loop
-	dhcpWg  sync.WaitGroup // requests being served
+	conn     net.PacketConn
+	stopping atomic.Bool    // set by stop, after which reading from conn fails
+	serveWg  sync.WaitGroup // the read loop
+	dhcpWg   sync.WaitGroup // requests being served
 }
 
 // Provision resolves the subnet and the interface, opens the lease database
@@ -92,6 +109,10 @@ func (s *Server) Provision(ctx caddy.Context) error {
 
 	if !findInterface(s) {
 		return fmt.Errorf("failed to find interface for subnet %s", s.Network.String())
+	}
+
+	s.ProbeAddress = func(ctx context.Context, ip net.IP) (bool, error) {
+		return probeAddress(ctx, &s.iface, s.IP, ip)
 	}
 
 	if err := s.openDatabase(); err != nil {
@@ -178,17 +199,51 @@ func (s *Server) start() error {
 		return fmt.Errorf("failed to listen on %s (%s): %w", s.IP, s.iface.Name, err)
 	}
 	s.conn = conn
+	s.stopping.Store(false)
 
 	s.serveWg.Add(1)
 	go func() {
 		defer s.serveWg.Done()
 
-		if err := s.ServePacket(conn); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.logger.Errorf("stopped serving subnet %s: %s", s.Network.String(), err.Error())
+		err := s.ServePacket(conn)
+		if errors.Is(err, net.ErrClosed) || s.stopping.Load() {
+			return
 		}
+
+		err = fmt.Errorf("stopped serving subnet %s: %w", s.Network.String(), err)
+		s.logger.Error(err.Error())
+		s.reportFailure(err)
 	}()
 
 	return nil
+}
+
+// reportFailure sends err to the channel of failures, unless the error of
+// another server is still waiting there.
+func (s *Server) reportFailure(err error) {
+	if s.failed == nil {
+		return
+	}
+
+	select {
+	case s.failed <- err:
+	default:
+	}
+}
+
+// removeStaticConflicts removes the stored leases that contradict the static
+// reservations of the server's lease database, if it supports them. It only
+// logs a failure: the database also removes such a lease when its client
+// asks for the address.
+func (s *Server) removeStaticConflicts() {
+	db, ok := s.Database.(lease.StaticReserver)
+	if !ok {
+		return
+	}
+
+	if err := db.RemoveStaticConflicts(context.Background()); err != nil {
+		s.logger.Errorf("failed to remove leases of static IP addresses of subnet %s: %s", s.Network.String(), err.Error())
+	}
 }
 
 // stop closes the server's connection and waits for the requests being
@@ -198,6 +253,7 @@ func (s *Server) stop() error {
 		return nil
 	}
 
+	s.stopping.Store(true)
 	err := s.conn.Close()
 	s.serveWg.Wait()
 	s.dhcpWg.Wait()

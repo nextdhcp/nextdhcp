@@ -27,6 +27,21 @@ func (r ReservedAddress) Expired(t time.Time) bool {
 	return r.Expires.Before(t)
 }
 
+// Clone returns a deep copy of the reserved address
+func (r ReservedAddress) Clone() ReservedAddress {
+	c := ReservedAddress{
+		Client: r.Client.Clone(),
+		IP:     append(net.IP{}, r.IP...),
+	}
+
+	if r.Expires != nil {
+		expires := *r.Expires
+		c.Expires = &expires
+	}
+
+	return c
+}
+
 // ReservedAddressList adds utility methods to a slice of ReservedAddress'es
 type ReservedAddressList []ReservedAddress
 
@@ -64,7 +79,7 @@ func (rl ReservedAddressList) FindHostname(name string) *ReservedAddress {
 }
 
 // FindID searches the list of reserved addresses for ID
-func (rl ReservedAddressList) FindID(id string) *ReservedAddress {
+func (rl ReservedAddressList) FindID(id ClientID) *ReservedAddress {
 	for _, r := range rl {
 		if r.ID == id {
 			return &r

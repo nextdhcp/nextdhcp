@@ -114,21 +114,26 @@ func prevIP(ip net.IP) net.IP {
 	return net.IPv4(r[0], r[1], r[2], r[3]).To4()
 }
 
-// Validate the IP range and return any error encountered
+// Validate checks that the range consists of IPv4 addresses and doesn't
+// start after its end. A range may consist of a single address.
 func (r *IPRange) Validate() error {
+	if r == nil {
+		return errors.New("no range")
+	}
+
 	start4, startOk := IP2Int(r.Start)
 	end4, endOk := IP2Int(r.End)
 
 	if !startOk {
-		return errors.New("invalid start IP")
+		return errors.New("start is not an IPv4 address")
 	}
 
 	if !endOk {
-		return errors.New("invalid end IP")
+		return errors.New("end is not an IPv4 address")
 	}
 
-	if start4 >= end4 {
-		return errors.New("invalid range")
+	if start4 > end4 {
+		return errors.New("start is after end")
 	}
 
 	return nil

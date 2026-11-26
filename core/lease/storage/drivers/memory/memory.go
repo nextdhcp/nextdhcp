@@ -7,13 +7,14 @@ import (
 	"net"
 	"time"
 
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"github.com/ppacher/webthings-mqtt-gateway/pkg/mutex"
 )
 
 type entry struct {
 	ip         net.IP
-	clientID   string
+	clientID   lease.ClientID
 	leased     bool
 	expiration time.Time
 }
@@ -31,7 +32,7 @@ type Storage struct {
 	l         *mutex.Mutex // context.Context aware mutex to protect all fields below
 	entries   map[key]*entry
 	ips       map[string]key
-	clientIDs map[string]key
+	clientIDs map[lease.ClientID]key
 }
 
 // New returns a new memory storage
@@ -44,12 +45,12 @@ func makeStorage() *Storage {
 		l:         mutex.New(),
 		entries:   make(map[key]*entry),
 		ips:       make(map[string]key),
-		clientIDs: make(map[string]key),
+		clientIDs: make(map[lease.ClientID]key),
 	}
 }
 
 // Create implements storage.LeaseStorage
-func (s *Storage) Create(ctx context.Context, ip net.IP, clientID string, leased bool, expiration time.Time) error {
+func (s *Storage) Create(ctx context.Context, ip net.IP, clientID lease.ClientID, leased bool, expiration time.Time) error {
 	if !s.l.TryLock(ctx) {
 		return ctx.Err()
 	}
@@ -89,7 +90,7 @@ func (s *Storage) Create(ctx context.Context, ip net.IP, clientID string, leased
 }
 
 // Delete implements storage.LeaseStorage
-func (s *Storage) Delete(ctx context.Context, ip net.IP, clientID string) error {
+func (s *Storage) Delete(ctx context.Context, ip net.IP, clientID lease.ClientID) error {
 	if !s.l.TryLock(ctx) {
 		return ctx.Err()
 	}
@@ -117,7 +118,7 @@ func (s *Storage) Delete(ctx context.Context, ip net.IP, clientID string) error 
 }
 
 // Update implements storage.LeaseStorage
-func (s *Storage) Update(ctx context.Context, ip net.IP, clientID string, leased bool, expiration time.Time) error {
+func (s *Storage) Update(ctx context.Context, ip net.IP, clientID lease.ClientID, leased bool, expiration time.Time) error {
 	if !s.l.TryLock(ctx) {
 		return ctx.Err()
 	}
@@ -142,7 +143,7 @@ func (s *Storage) Update(ctx context.Context, ip net.IP, clientID string, leased
 }
 
 // FindByIP implements storage.LeaseStorage
-func (s *Storage) FindByIP(ctx context.Context, ip net.IP) (string, bool, time.Time, error) {
+func (s *Storage) FindByIP(ctx context.Context, ip net.IP) (lease.ClientID, bool, time.Time, error) {
 	if !s.l.TryLock(ctx) {
 		return "", false, time.Time{}, ctx.Err()
 	}
@@ -162,7 +163,7 @@ func (s *Storage) FindByIP(ctx context.Context, ip net.IP) (string, bool, time.T
 }
 
 // FindByID implements storage.LeaseStorage
-func (s *Storage) FindByID(ctx context.Context, clientID string) (net.IP, bool, time.Time, error) {
+func (s *Storage) FindByID(ctx context.Context, clientID lease.ClientID) (net.IP, bool, time.Time, error) {
 	if !s.l.TryLock(ctx) {
 		return nil, false, time.Time{}, ctx.Err()
 	}
@@ -198,13 +199,13 @@ func (s *Storage) ListIPs(ctx context.Context) ([]net.IP, error) {
 }
 
 // ListIDs implements storage.LeaseStorage
-func (s *Storage) ListIDs(ctx context.Context) ([]string, error) {
+func (s *Storage) ListIDs(ctx context.Context) ([]lease.ClientID, error) {
 	if !s.l.TryLock(ctx) {
 		return nil, ctx.Err()
 	}
 	defer s.l.Unlock()
 
-	ids := make([]string, 0, len(s.clientIDs))
+	ids := make([]lease.ClientID, 0, len(s.clientIDs))
 	for id := range s.clientIDs {
 		ids = append(ids, id)
 	}

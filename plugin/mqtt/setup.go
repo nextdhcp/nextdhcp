@@ -65,7 +65,7 @@ type (
 // named connection, without condition or payload, for others to use.
 func (cfg PublishConfig) validate() error {
 	if cfg.Connection == nil && cfg.Name == "" {
-		return errors.New("Either configure a MQTT connection or \"use\" an existing one")
+		return errors.New("either configure a MQTT connection or \"use\" an existing one")
 	}
 
 	onlyConnection := cfg.Connection != nil && cfg.Name != "" &&
@@ -107,7 +107,7 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 		}
 
 		if pub.Connection != nil {
-			cfg.conn = &mqttConnConfig{
+			cfg.conn = &mqttConnection{
 				broker:       pub.Connection.Broker,
 				user:         pub.Connection.User,
 				password:     pub.Connection.Password,
@@ -145,22 +145,13 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 	return nil
 }
 
-// Cleanup disconnects from the MQTT brokers.
+// Cleanup disconnects from the MQTT brokers. It doesn't wait for connections
+// still being opened, which disconnect once they are.
 func (m *mqttPlugin) Cleanup() error {
 	for _, cfg := range m.configs {
-		if cfg.conn == nil {
-			continue
+		if cfg.conn != nil {
+			cfg.conn.close()
 		}
-
-		cfg.conn.l.Lock()
-		// keep messages still being published from opening a new
-		// connection that nothing would close
-		cfg.conn.closed = true
-		if cfg.conn.c != nil {
-			cfg.conn.c.Disconnect(250)
-			cfg.conn.c = nil
-		}
-		cfg.conn.l.Unlock()
 	}
 
 	return nil
@@ -244,7 +235,7 @@ func (m *mqttPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 		}
 
 		if !useExisting && cfg.Connection == nil {
-			return c.SyntaxErr("Either configure a MQTT connection or \"use\" an existing one")
+			return c.SyntaxErr("either configure a MQTT connection or \"use\" an existing one")
 		}
 
 		if err := cfg.validate(); err != nil {

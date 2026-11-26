@@ -19,6 +19,10 @@ var (
 
 	// ErrInvalidAddress indicates that the IP address is invalid
 	ErrInvalidAddress = errors.New("invalid IP address")
+
+	// ErrStaticReservation indicates that the IP address is statically
+	// reserved, which only the configuration can change
+	ErrStaticReservation = errors.New("IP is statically reserved")
 )
 
 // Database describes a lease database interface
@@ -46,7 +50,9 @@ type Database interface {
 	// either already be leased to the client or have been reserved
 	// for it. if renew is set, the lease time will always be
 	// updated. Otherwise, the lease time will only be updated if
-	// the lease already expired. The returned lease time indicates
+	// the IP address was only reserved for the client, or if the
+	// lease expired or less than a second of it remains, as lease
+	// times are sent in whole seconds. The returned lease time indicates
 	// the active lease time either with or without renewal. Any
 	// pending reservation for this IP address will be removed
 	Lease(context.Context, net.IP, Client, time.Duration, bool) (time.Duration, error)
@@ -58,6 +64,47 @@ type Database interface {
 
 	// DeleteReservation deletes a IP address reservation
 	DeleteReservation(context.Context, net.IP, *Client) error
+}
+
+// StaticReserver is implemented by lease databases that support static
+// reservations, which the static plugin needs for the addresses it assigns.
+type StaticReserver interface {
+	// ReserveStatic reserves the IPv4 address of r for its client,
+	// identified by its hardware address, for as long as the database
+	// is open, like a static address configured for the client: Reserve
+	// and Lease fail with ErrAddressReserved for the IP address and any
+	// other client, and remove that client's stored lease or
+	// reservation of it, which the client doesn't use once it is
+	// refused. For the client, Reserve succeeds without storing a
+	// reservation, and Lease stores the lease like any other, so that
+	// the address stays leased to the client until the lease expires if
+	// the static reservation is removed, and removes the client's lease
+	// or reservation of another address, which it gave up. While
+	// another client has a lease of the address that hasn't expired,
+	// from before it was reserved, which that client may still use,
+	// Reserve and Lease fail with ErrAddressReserved for the client
+	// too. Static reservations are kept in memory only, so they must be
+	// made again whenever the database is opened. Release succeeds for
+	// a statically reserved IP address, removing other clients' stored
+	// leases and reservations of it but neither the static reservation
+	// nor its client's, DeleteReservation fails with
+	// ErrStaticReservation, and ReservedAddresses returns static
+	// reservations without an expiration time. ReserveStatic fails if r
+	// has an expiration time, or if the IP address or the client
+	// already has a different static reservation
+	ReserveStatic(context.Context, ReservedAddress) error
+
+	// RemoveStaticConflicts removes other clients' stored reservations
+	// and expired leases of statically reserved IP addresses, which
+	// they don't use, and which would keep the addresses from their
+	// clients. Other clients' leases that haven't expired are kept, as
+	// those clients may still use them, until those clients ask for an
+	// address and are refused. The leases and reservations of other IP
+	// addresses for a client with a static reservation are kept too, as
+	// the client uses its lease until it tries to renew it. DHCP
+	// servers call RemoveStaticConflicts once they serve, so nothing
+	// is removed if they fail to start
+	RemoveStaticConflicts(context.Context) error
 }
 
 // Key is a key used to associate a Database with

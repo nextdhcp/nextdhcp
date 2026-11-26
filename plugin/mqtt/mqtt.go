@@ -19,7 +19,7 @@ type (
 	// from the given request and response DHCPv4 messages
 	msgFactory func(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error)
 
-	mqttConnConfig struct {
+	mqttConnection struct {
 		broker       []string
 		user         string
 		password     string
@@ -27,15 +27,16 @@ type (
 		cleanSession bool
 		qos          int
 
-		l      sync.Mutex
-		c      mqtt.Client
-		closed bool // set by Cleanup, after which no connection is opened
+		l          sync.Mutex    // protects the fields below
+		c          mqtt.Client   // the connected client, if any
+		connecting chan struct{} // closed when the connection attempt in progress ends
+		closed     bool          // set by Cleanup, after which no connection is opened
 	}
 
 	mqttConfig struct {
 		*matcher.Matcher
 
-		conn    *mqttConnConfig
+		conn    *mqttConnection
 		name    string // optional name for the mqtt config
 		topic   msgFactory
 		payload msgFactory
@@ -125,23 +126,82 @@ func (m *mqttPlugin) getClient(cfg *mqttConfig) (mqtt.Client, int, error) {
 		return nil, 0, fmt.Errorf("MQTT configuration with name %q not found", cfg.name)
 	}
 
-	cfg.conn.l.Lock()
-	defer cfg.conn.l.Unlock()
-
-	if cfg.conn.closed {
-		return nil, 0, errors.New("MQTT connection already closed")
+	cli, err := cfg.conn.client(m.l)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	if cfg.conn.c == nil {
-		if err := cfg.conn.open(m.l); err != nil {
-			return nil, 0, err
-		}
-	}
-
-	return cfg.conn.c, cfg.conn.qos, nil
+	return cli, cfg.conn.qos, nil
 }
 
-func (conn *mqttConnConfig) open(l log.Logger) error {
+var errConnectionClosed = errors.New("MQTT connection already closed")
+
+// client returns the connected client, and connects first if there is none.
+// It doesn't hold conn.l while it connects, so close doesn't wait for that.
+func (conn *mqttConnection) client(l log.Logger) (mqtt.Client, error) {
+	for {
+		conn.l.Lock()
+		switch {
+		case conn.closed:
+			conn.l.Unlock()
+			return nil, errConnectionClosed
+
+		case conn.c != nil:
+			cli := conn.c
+			conn.l.Unlock()
+			return cli, nil
+
+		case conn.connecting != nil:
+			// wait for the connection attempt in progress, then check again
+			connecting := conn.connecting
+			conn.l.Unlock()
+			<-connecting
+			continue
+		}
+
+		connecting := make(chan struct{})
+		conn.connecting = connecting
+		conn.l.Unlock()
+
+		cli, err := conn.open(l)
+
+		conn.l.Lock()
+		conn.connecting = nil
+		close(connecting)
+		closed := conn.closed
+		if err == nil && !closed {
+			conn.c = cli
+		}
+		conn.l.Unlock()
+
+		switch {
+		case err != nil:
+			return nil, err
+		case closed:
+			// close ran while connecting, so nothing else would disconnect
+			cli.Disconnect(250)
+			return nil, errConnectionClosed
+		}
+
+		return cli, nil
+	}
+}
+
+// close disconnects the client and keeps new connections from being opened,
+// so messages still being published don't open one that nothing would close.
+func (conn *mqttConnection) close() {
+	conn.l.Lock()
+	conn.closed = true
+	cli := conn.c
+	conn.c = nil
+	conn.l.Unlock()
+
+	if cli != nil {
+		cli.Disconnect(250)
+	}
+}
+
+func (conn *mqttConnection) open(l log.Logger) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions()
 
 	for _, b := range conn.broker {
@@ -175,11 +235,9 @@ func (conn *mqttConnConfig) open(l log.Logger) error {
 
 	l.Debugf("connecting to MQTT brokers at %s", strings.Join(servers, ", "))
 	if token := cli.Connect(); token.Wait() && token.Error() != nil {
-		return token.Error()
+		return nil, token.Error()
 	}
 	l.Infof("connected to MQTT brokers at %s", strings.Join(servers, ", "))
 
-	conn.c = cli
-
-	return nil
+	return cli, nil
 }

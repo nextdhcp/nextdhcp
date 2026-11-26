@@ -3,6 +3,7 @@ package ranges
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/lease/iprange"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
@@ -52,6 +54,13 @@ func (p *RangePlugin) Provision(ctx caddy.Context) error {
 		return errors.New("range must be provisioned by a DHCP server")
 	}
 
+	// validate the ranges before merging them, which fails for invalid ones
+	for _, r := range p.Ranges {
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf("invalid IP range %v: %w", r, err)
+		}
+	}
+
 	p.Network = srv.Network
 	p.L = ctx.Logger().Sugar()
 	p.Ranges = iprange.Merge(p.Ranges)
@@ -70,10 +79,7 @@ func (p *RangePlugin) Wrap(next plugin.Handler) plugin.Handler {
 func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr, requested net.IP, db lease.Database) net.IP {
 	l := log.With(ctx, p.L)
 
-	cli := lease.Client{
-		HwAddr: mac,
-		ID:     mac.String(),
-	}
+	cli := lease.NewClient(mac)
 
 	// if there's a requested IP address will try that first if it's part of our range
 	// if there's a requested address that's not in our ranges will do nothing as another
@@ -96,11 +102,18 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 		// TODO(ppacher): should we check for context errors here?
 	}
 
+	released := false
 	for _, r := range p.Ranges {
 		for idx := 0; idx < r.Len(); idx++ {
 			ip := r.ByIdx(idx)
 
-			if err := db.Reserve(ctx, ip, cli); err != nil {
+			err := db.Reserve(ctx, ip, cli)
+			if err != nil && !released && p.releaseOutsideRanges(ctx, mac, err, db) {
+				released = true
+				err = db.Reserve(ctx, ip, cli)
+			}
+
+			if err != nil {
 				// failed to reserve the IP address
 				if err == context.DeadlineExceeded || err == context.Canceled {
 					return nil
@@ -116,6 +129,29 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 
 	// we failed to find a leasable address
 	return nil
+}
+
+// releaseOutsideRanges releases the lease or reservation of an IP address
+// outside the ranges that keeps the client with mac from reserving an address
+// of the ranges, as err says, and reports whether it did. Storages hold a
+// single lease or reservation per client, and the client asks for a new
+// address. Nothing else releases such an address, for example the static
+// address of a client that was removed from the configuration.
+func (p *RangePlugin) releaseOutsideRanges(ctx context.Context, mac net.HardwareAddr, err error, db lease.Database) bool {
+	var duplicate *storage.ErrDuplicateClientID
+	if !errors.As(err, &duplicate) || duplicate.IP == nil || p.Ranges.Contains(duplicate.IP) {
+		return false
+	}
+
+	l := log.With(ctx, p.L)
+	if err := db.Release(ctx, duplicate.IP); err != nil {
+		l.Errorf("%s: failed to release IP %s outside the ranges: %s", mac, duplicate.IP, err.Error())
+		return false
+	}
+
+	l.Infof("%s: released IP %s, which is outside the ranges, for a new address", mac, duplicate.IP)
+
+	return true
 }
 
 func (p *RangePlugin) findAndPrepareResponse(ctx context.Context, req, res *dhcpv4.DHCPv4, requested net.IP, db lease.Database) bool {
@@ -138,7 +174,7 @@ func (p *RangePlugin) findAndPrepareResponse(ctx context.Context, req, res *dhcp
 func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	l := log.With(ctx, p.L)
 	db := lease.GetDatabase(ctx)
-	cli := lease.Client{HwAddr: req.ClientHWAddr}
+	cli := lease.NewClient(req.ClientHWAddr)
 
 	if dhcpserver.Discover(req) {
 		if p.findAndPrepareResponse(ctx, req, res, req.RequestedIPAddress(), db) {
@@ -200,9 +236,11 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 
 			if err == nil {
 				l.Infof("%s (%s): lease %s for %s (activeLeaseTime: %s)", req.ClientHWAddr, state, ip, leaseTime, activeLeaseTime)
-				if leaseTime == time.Hour {
-					res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
-				}
+
+				// tell the client when the database lets the lease expire,
+				// which is earlier than the configured lease time if the
+				// client keeps the lease it has
+				res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
 
 				// make sure we ACK the DHCPREQUEST
 				res.YourIPAddr = ip
@@ -250,10 +288,12 @@ func (p *RangePlugin) logAddressReservedError(ctx context.Context, err error, db
 
 	reservedAddresses, raErr := db.ReservedAddresses(ctx)
 	if raErr == nil {
-		entry := reservedAddresses.FindIP(ip)
-		if entry == nil {
+		switch entry := reservedAddresses.FindIP(ip); {
+		case entry == nil:
 			l.Errorf("%s: Database.Lease failed but IP %s is not reserved", req.ClientHWAddr, ip)
-		} else {
+		case entry.Expires == nil:
+			l.Errorf("%s: IP %s is statically reserved for %s", req.ClientHWAddr, ip, entry.HwAddr)
+		default:
 			l.Errorf("%s: IP %s is already reserved for %s and expires %s (expired=%v)", req.ClientHWAddr, ip, entry.Client, entry.Expires, entry.Expired(time.Now()))
 		}
 	} else {
@@ -296,6 +336,10 @@ func (p *RangePlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 		r := &iprange.IPRange{
 			Start: startIP,
 			End:   endIP,
+		}
+
+		if err := r.Validate(); err != nil {
+			return c.Errf("invalid IP range %s: %s", r, err)
 		}
 
 		p.Ranges = iprange.Merge(append(p.Ranges, r))
