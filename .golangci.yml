@@ -1,3 +1,5 @@
+version: "2"
+
 linters:
   disable:
     # Disable soon to deprecated[1] linters that lead to false
@@ -6,3 +8,24 @@ linters:
     # 2: https://github.com/prometheus/node_exporter/issues/1545
     - unused
     - govet
+  settings:
+    staticcheck:
+      # The default checks, and QF1008, which suggests leaving out embedded
+      # fields from selectors. Naming them can be clearer, like a.RawAddr.IP
+      # next to a.Local.IP for the two addresses of a socket.Addr.
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF1008
+  exclusions:
+    # The issues golangci-lint v1 excluded by default
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
