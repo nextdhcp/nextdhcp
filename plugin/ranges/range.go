@@ -3,6 +3,7 @@ package ranges
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -50,6 +51,12 @@ func (p *RangePlugin) Provision(ctx caddy.Context) error {
 	srv := dhcpserver.ServerFromContext(ctx)
 	if srv == nil {
 		return errors.New("range must be provisioned by a DHCP server")
+	}
+
+	for _, r := range p.Ranges {
+		if err := validateRange(r); err != nil {
+			return err
+		}
 	}
 
 	p.Network = srv.Network
@@ -300,6 +307,10 @@ func (p *RangePlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 			End:   endIP,
 		}
 
+		if err := validateRange(r); err != nil {
+			return c.Err(err.Error())
+		}
+
 		p.Ranges = iprange.Merge(append(p.Ranges, r))
 	}
 
@@ -312,6 +323,26 @@ var (
 	_ caddyfile.Unmarshaler = (*RangePlugin)(nil)
 	_ plugin.Middleware     = (*RangePlugin)(nil)
 )
+
+// validateRange checks that r is a range of IPv4 addresses whose start is not
+// after its end. Ranges of other addresses would make IPRange.Contains panic.
+func validateRange(r *iprange.IPRange) error {
+	if r == nil {
+		return errors.New("invalid IP range")
+	}
+
+	start, startOk := iprange.IP2Int(r.Start)
+	end, endOk := iprange.IP2Int(r.End)
+	if !startOk || !endOk {
+		return fmt.Errorf("IP range %s must consist of IPv4 addresses", r)
+	}
+
+	if start > end {
+		return fmt.Errorf("IP range %s starts after its end", r)
+	}
+
+	return nil
+}
 
 func ipIsUnset(ip net.IP) bool {
 	return ip == nil || ip.IsUnspecified()
