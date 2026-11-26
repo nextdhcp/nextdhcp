@@ -124,3 +124,30 @@ func TestReserveStaticInvalid(t *testing.T) {
 
 	assert.Error(t, db.ReserveStatic(ctx, net.IP{10, 0, 0, 1}, lease.Client{ID: "client"}))
 }
+
+// TestReserveExpiredOfOtherClient checks that an IP address whose reservation
+// for another client expired can be reserved again.
+func TestReserveExpiredOfOtherClient(t *testing.T) {
+	ctx := context.Background()
+	ip := net.IP{10, 0, 0, 1}
+	client1 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	client2 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+
+	for _, driver := range []string{"memory", "bolt"} {
+		t.Run(driver, func(t *testing.T) {
+			store := openStorage(t, driver)
+			require.NoError(t, store.Create(ctx, ip, client1.HwAddr.String(), false, time.Now().Add(-time.Minute)))
+
+			db := storage.NewDatabase(store)
+			require.NoError(t, db.Reserve(ctx, ip, client2))
+
+			owner, leased, _, err := store.FindByIP(ctx, ip)
+			require.NoError(t, err)
+			assert.Equal(t, client2.HwAddr.String(), owner)
+			assert.False(t, leased)
+
+			// the reservation of client2 hasn't expired yet
+			assert.ErrorIs(t, db.Reserve(ctx, ip, client1), lease.ErrAddressReserved)
+		})
+	}
+}

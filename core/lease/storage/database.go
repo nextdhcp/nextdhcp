@@ -239,15 +239,25 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 		return err
 	}
 
-	if err == nil { // !IsNotFound(err)
-		if existingClient != clientID {
-			// IP address either leased or ŕeserved for a different client
-			if time.Now().Before(expiration) {
-				l.Debugf("address %s already reserved for %s", ip, existingClient)
-				return lease.ErrAddressReserved
-			}
+	if err == nil && existingClient != clientID {
+		// IP address either leased or reserved for a different client
+		if time.Now().Before(expiration) {
+			l.Debugf("address %s already reserved for %s", ip, existingClient)
+			return lease.ErrAddressReserved
 		}
 
+		// The entry of the other client expired, so remove it and reserve
+		// the IP address for this client. Storages can't update an entry
+		// to belong to another client
+		l.Debugf("removing expired entry of IP %s for client %s", ip, existingClient)
+		if err := db.store.Delete(ctx, ip, existingClient); err != nil && !IsNotFound(err) {
+			return err
+		}
+
+		return db.store.Create(ctx, ip, clientID, false, time.Now().Add(time.Minute))
+	}
+
+	if err == nil { // !IsNotFound(err)
 		// The IP address is already leased  or reserved for this client. In case
 		// the reservation expired we'll update it's validity
 		//
