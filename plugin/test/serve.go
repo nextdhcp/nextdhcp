@@ -9,6 +9,8 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage"
+	"github.com/nextdhcp/nextdhcp/core/lease/storage/drivers/memory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,7 +46,8 @@ func NewContext(t *testing.T) caddy.Context {
 // Provision provisions the handler module m the way a server for TestSubnet
 // does when it loads m from its JSON config: it encodes m to JSON, decodes
 // the JSON into a new instance of the module and provisions the new
-// instance, which it returns.
+// instance, which it returns. The server has a lease database that keeps
+// leases in memory.
 func Provision(t *testing.T, m caddy.Module) (caddy.Module, error) {
 	t.Helper()
 
@@ -55,9 +58,10 @@ func Provision(t *testing.T, m caddy.Module) (caddy.Module, error) {
 	require.NoError(t, err)
 
 	srv := &dhcpserver.Server{
-		Subnet:  TestSubnet,
-		IP:      ip,
-		Network: *ipNet,
+		Subnet:   TestSubnet,
+		IP:       ip,
+		Network:  *ipNet,
+		Database: storage.NewDatabase(memory.New()),
 	}
 
 	ctx := dhcpserver.WithServer(NewContext(t), srv)

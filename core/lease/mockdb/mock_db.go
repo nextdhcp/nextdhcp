@@ -49,5 +49,10 @@ func (m *MockDatabase) DeleteReservation(_ context.Context, ip net.IP, cli *leas
 	return m.Called(ip, cli).Error(0)
 }
 
+// ReserveStatic implements the lease.Database interface
+func (m *MockDatabase) ReserveStatic(_ context.Context, ip net.IP, cli lease.Client) error {
+	return m.Called(ip, cli).Error(0)
+}
+
 // compile time check
 var _ lease.Database = &MockDatabase{}

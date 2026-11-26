@@ -250,10 +250,12 @@ func (p *RangePlugin) logAddressReservedError(ctx context.Context, err error, db
 
 	reservedAddresses, raErr := db.ReservedAddresses(ctx)
 	if raErr == nil {
-		entry := reservedAddresses.FindIP(ip)
-		if entry == nil {
+		switch entry := reservedAddresses.FindIP(ip); {
+		case entry == nil:
 			l.Errorf("%s: Database.Lease failed but IP %s is not reserved", req.ClientHWAddr, ip)
-		} else {
+		case entry.Expires == nil:
+			l.Errorf("%s: IP %s is statically reserved for %s", req.ClientHWAddr, ip, entry.HwAddr)
+		default:
 			l.Errorf("%s: IP %s is already reserved for %s and expires %s (expired=%v)", req.ClientHWAddr, ip, entry.Client, entry.Expires, entry.Expired(time.Now()))
 		}
 	} else {

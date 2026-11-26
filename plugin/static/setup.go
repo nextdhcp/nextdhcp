@@ -8,6 +8,7 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -31,11 +32,17 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 		return errors.New("static must be provisioned by a DHCP server")
 	}
 
+	db := s.Config.Database
+	if db == nil {
+		return errors.New("static requires the lease database of the DHCP server")
+	}
+
 	s.L = ctx.Logger().Sugar()
 
 	// ServeDHCP looks clients up by the canonical (lower case) form of their
 	// MAC address, so store the addresses by that form
 	addresses := make(map[string]net.IP, len(s.Addresses))
+	macs := make(map[string]net.HardwareAddr, len(s.Addresses))
 	clients := make(map[string]string, len(s.Addresses))
 	for key, ip := range s.Addresses {
 		mac, err := net.ParseMAC(key)
@@ -56,10 +63,20 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 		}
 
 		addresses[mac.String()] = ip
+		macs[mac.String()] = mac
 		clients[ip.String()] = key
 	}
 
 	s.Addresses = addresses
+
+	// Reserve the addresses in the lease database, so other plugins, like
+	// range, don't lease them to other clients
+	for key, ip := range addresses {
+		cli := lease.Client{HwAddr: macs[key], ID: key}
+		if err := db.ReserveStatic(ctx, ip, cli); err != nil {
+			return fmt.Errorf("failed to reserve static IP %s for client %s: %w", ip, key, err)
+		}
+	}
 
 	return nil
 }

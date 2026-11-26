@@ -179,6 +179,122 @@ func TestServe(t *testing.T) {
 	}
 }
 
+// startApp provisions and starts an app adapted from dhcpfile, which must
+// configure a single server, and returns the connection the server serves.
+// The app is stopped and cleaned up when the test ends.
+func startApp(t *testing.T, dhcpfile string) *fakeConn {
+	t.Helper()
+
+	conn := newFakeConn()
+	restore := dhcpserver.SetListenDHCP(func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+		return conn, nil
+	})
+	t.Cleanup(restore)
+
+	_, app, err := adapt(t, dhcpfile)
+	require.NoError(t, err)
+
+	ctx, cancel := caddy.NewContext(caddy.Context{Context: context.Background()})
+	t.Cleanup(cancel)
+
+	require.NoError(t, app.Provision(ctx))
+	t.Cleanup(func() { assert.NoError(t, app.Cleanup()) })
+
+	require.NoError(t, app.Start())
+	t.Cleanup(func() { assert.NoError(t, app.Stop()) })
+
+	return conn
+}
+
+// TestStaticAddressReserved checks that an address the static plugin assigns
+// to a client is not leased to other clients, even if it's part of a range.
+func TestStaticAddressReserved(t *testing.T) {
+	const (
+		dhcpfile = `
+127.0.0.1/8 {
+	database %s
+	range 127.0.0.10 127.0.0.20
+	%s
+}
+`
+		static = "static aa:bb:cc:dd:ee:ff 127.0.0.10"
+	)
+
+	staticClient := net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
+	otherClient := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}
+
+	// leaseAddress checks that client gets ip with a DISCOVER and a REQUEST.
+	leaseAddress := func(t *testing.T, conn *fakeConn, client net.HardwareAddr, ip string) {
+		t.Helper()
+
+		discover, err := dhcpv4.NewDiscovery(client)
+		require.NoError(t, err)
+
+		offer := conn.exchange(t, discover)
+		assert.Equal(t, dhcpv4.MessageTypeOffer, offer.MessageType())
+		assert.Equal(t, ip, offer.YourIPAddr.String())
+
+		request, err := dhcpv4.NewRequestFromOffer(offer)
+		require.NoError(t, err)
+
+		ack := conn.exchange(t, request)
+		assert.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
+		assert.Equal(t, ip, ack.YourIPAddr.String())
+	}
+
+	t.Run("discover", func(t *testing.T) {
+		conn := startApp(t, fmt.Sprintf(dhcpfile, "memory", static))
+
+		// other clients get the next address of the range
+		leaseAddress(t, conn, otherClient, "127.0.0.11")
+		leaseAddress(t, conn, staticClient, "127.0.0.10")
+	})
+
+	t.Run("request", func(t *testing.T) {
+		conn := startApp(t, fmt.Sprintf(dhcpfile, "memory", static))
+
+		// other clients can't request the static address
+		request, err := dhcpv4.NewDiscovery(otherClient,
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+			dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(net.IP{127, 0, 0, 10})),
+		)
+		require.NoError(t, err)
+
+		nak := conn.exchange(t, request)
+		assert.Equal(t, dhcpv4.MessageTypeNak, nak.MessageType())
+
+		leaseAddress(t, conn, staticClient, "127.0.0.10")
+	})
+
+	t.Run("leased before", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		// another client leases the address before it is assigned to a
+		// client
+		require.True(t, t.Run("without static", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
+			leaseAddress(t, conn, otherClient, "127.0.0.10")
+		}))
+
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, static))
+
+		// its lease can't be renewed
+		renew, err := dhcpv4.New(
+			dhcpv4.WithHwAddr(otherClient),
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+			dhcpv4.WithClientIP(net.IP{127, 0, 0, 10}),
+		)
+		require.NoError(t, err)
+
+		nak := conn.exchange(t, renew)
+		assert.Equal(t, dhcpv4.MessageTypeNak, nak.MessageType())
+
+		// so it gets a new address
+		leaseAddress(t, conn, otherClient, "127.0.0.11")
+		leaseAddress(t, conn, staticClient, "127.0.0.10")
+	})
+}
+
 // TestStartFailure checks that Start stops the servers it already started if
 // a later one fails to start.
 func TestStartFailure(t *testing.T) {

@@ -17,6 +17,8 @@ will be assigned an IP address from one of the configured ranges. If the client 
 an address (i.e. in RENEWING state) it will get the very same address assigned. If the `range` plugin is
 not able to find a suitable address the next plugin will be called. Typically, the `range` plugin should
 be one of the last plugins used. This plugin may be specified multiple times per DHCP server block.
+IP addresses that the [*static*](../static) plugin of the server block assigns to clients are never
+leased to other clients.
 
 ## Syntax
 

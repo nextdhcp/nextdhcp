@@ -167,7 +167,8 @@ func (s *Storage) FindByID(ctx context.Context, clientID string) (net.IP, bool, 
 			return &storage.ErrIPNotFound{}
 		}
 
-		ip = net.IP(idToIPBucket.Get([]byte(clientID)))
+		// values are only valid during the transaction, so copy the IP
+		ip = append(net.IP(nil), idToIPBucket.Get([]byte(clientID))...)
 		if ip == nil {
 			// TODO(ppacher): see above
 			return &storage.ErrIPNotFound{}
@@ -196,7 +197,8 @@ func (s *Storage) ListIPs(ctx context.Context) ([]net.IP, error) {
 		cursor := ipBucket.Cursor()
 		key, _ := cursor.First()
 		for key != nil {
-			ips = append(ips, net.IP(key))
+			// keys are only valid during the transaction, so copy them
+			ips = append(ips, append(net.IP(nil), key...))
 			key, _ = cursor.Next()
 		}
 

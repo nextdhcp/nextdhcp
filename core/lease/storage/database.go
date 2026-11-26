@@ -3,7 +3,9 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/nextdhcp/nextdhcp/core/lease"
@@ -15,14 +17,20 @@ import (
 type Database struct {
 	store LeaseStorage
 	l     dhcpLog.Logger
+
+	// staticLock protects static, which holds the static reservations by
+	// the string form of their IP address. They are not persisted
+	staticLock sync.RWMutex
+	static     map[string]lease.ReservedAddress
 }
 
 // NewDatabase creates a new database that uses store for persistence. It
 // discards the errors it logs until a logger is set with SetLogger.
 func NewDatabase(store LeaseStorage) *Database {
 	return &Database{
-		store: store,
-		l:     zap.NewNop().Sugar(),
+		store:  store,
+		l:      zap.NewNop().Sugar(),
+		static: make(map[string]lease.ReservedAddress),
 	}
 }
 
@@ -98,7 +106,115 @@ func (db *Database) ReservedAddresses(ctx context.Context) (lease.ReservedAddres
 		})
 	}
 
+	db.staticLock.RLock()
+	defer db.staticLock.RUnlock()
+
+	for _, r := range db.static {
+		leases = append(leases, lease.ReservedAddress{
+			Client: lease.Client{
+				HwAddr:   append(net.HardwareAddr(nil), r.HwAddr...),
+				Hostname: r.Hostname,
+				ID:       r.ID,
+			},
+			IP: append(net.IP(nil), r.IP...),
+		})
+	}
+
 	return leases, nil
+}
+
+// staticOwner returns the ID of the client that ip is statically reserved
+// for, if it is.
+func (db *Database) staticOwner(ip net.IP) (string, bool) {
+	db.staticLock.RLock()
+	defer db.staticLock.RUnlock()
+
+	r, ok := db.static[ip.String()]
+
+	return r.HwAddr.String(), ok
+}
+
+// ReserveStatic implements lease.Database
+func (db *Database) ReserveStatic(ctx context.Context, ip net.IP, cli lease.Client) error {
+	l := dhcpLog.With(ctx, db.l)
+
+	// Storages compare IP addresses by their bytes, and store addresses in
+	// the 4 byte form that DHCP messages use
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return lease.ErrInvalidAddress
+	}
+	ip4 = append(net.IP(nil), ip4...)
+
+	if len(cli.HwAddr) == 0 {
+		return errors.New("static reservations require the hardware address of the client")
+	}
+	clientID := cli.HwAddr.String()
+
+	db.staticLock.Lock()
+	defer db.staticLock.Unlock()
+
+	if r, ok := db.static[ip4.String()]; ok {
+		if owner := r.HwAddr.String(); owner != clientID {
+			return fmt.Errorf("IP %s is already statically reserved for client %s", ip4, owner)
+		}
+
+		return nil
+	}
+
+	for _, r := range db.static {
+		if r.HwAddr.String() == clientID {
+			return fmt.Errorf("client %s already has a static reservation for IP %s", clientID, r.IP)
+		}
+	}
+
+	// Remove the leases and reservations that contradict the static
+	// reservation. Another client can't renew its lease or reservation of
+	// the IP address anymore, and as storages hold a single lease or
+	// reservation per client, it would keep that client from getting
+	// another address. The client itself won't renew its leases or
+	// reservations of other IP addresses, which would only keep them from
+	// other clients until they expire.
+	existingClient, _, _, err := db.store.FindByIP(ctx, ip4)
+	switch {
+	case err == nil:
+		if existingClient != clientID {
+			l.Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", ip4, existingClient, clientID)
+		}
+
+		if err := db.store.Delete(ctx, ip4, existingClient); err != nil && !IsNotFound(err) {
+			return err
+		}
+
+	case !IsNotFound(err):
+		return err
+	}
+
+	existingIP, _, _, err := db.store.FindByID(ctx, clientID)
+	switch {
+	case err == nil:
+		l.Infof("removing lease or reservation of IP %s for client %s: the client has the static IP %s", existingIP, clientID, ip4)
+
+		if err := db.store.Delete(ctx, existingIP, clientID); err != nil && !IsNotFound(err) {
+			return err
+		}
+
+	case !IsNotFound(err):
+		return err
+	}
+
+	db.static[ip4.String()] = lease.ReservedAddress{
+		Client: lease.Client{
+			HwAddr:   append(net.HardwareAddr(nil), cli.HwAddr...),
+			Hostname: cli.Hostname,
+			ID:       cli.ID,
+		},
+		IP: ip4,
+	}
+
+	l.Debugf("statically reserved IP %s for client %s", ip4, clientID)
+
+	return nil
 }
 
 // Reserve implements lease.Database
@@ -106,6 +222,16 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 	l := dhcpLog.With(ctx, db.l)
 
 	clientID := cli.HwAddr.String()
+
+	if owner, ok := db.staticOwner(ip); ok {
+		if owner != clientID {
+			l.Debugf("address %s statically reserved for %s", ip, owner)
+			return lease.ErrAddressReserved
+		}
+
+		// static reservations don't expire
+		return nil
+	}
 
 	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
 	if err != nil && !IsNotFound(err) {
@@ -151,6 +277,16 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 	l := dhcpLog.With(ctx, db.l)
 
 	clientID := cli.HwAddr.String()
+
+	if owner, ok := db.staticOwner(ip); ok {
+		if owner != clientID {
+			l.Debugf("IP %s statically reserved for client %s", ip.String(), owner)
+			return 0, lease.ErrAddressReserved
+		}
+
+		// leases of statically reserved addresses aren't stored
+		return leaseTime, nil
+	}
 
 	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
 	if err != nil && !IsNotFound(err) {
