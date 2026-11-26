@@ -120,9 +120,11 @@ func TestReserveStatic(t *testing.T) {
 			_, _, _, err = store.FindByIP(ctx, staticIP)
 			assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
 
-			// releasing or deleting the reservation doesn't remove it
+			// releasing the address succeeds, and deleting the reservation
+			// fails, without removing it
 			assert.NoError(t, db.Release(ctx, staticIP))
-			_ = db.DeleteReservation(ctx, staticIP, nil)
+			assert.ErrorIs(t, db.DeleteReservation(ctx, staticIP, nil), lease.ErrStaticReservation)
+			assert.ErrorIs(t, db.DeleteReservation(ctx, staticIP, &staticClient), lease.ErrStaticReservation)
 			assert.ErrorIs(t, db.Reserve(ctx, staticIP, client2), lease.ErrAddressReserved)
 
 			// static reservations can be repeated, but not changed

@@ -117,12 +117,8 @@ func (db *Database) staticReservations() []lease.ReservedAddress {
 	reservations := make([]lease.ReservedAddress, 0, len(db.static))
 	for _, r := range db.static {
 		reservations = append(reservations, lease.ReservedAddress{
-			Client: lease.Client{
-				HwAddr:   append(net.HardwareAddr(nil), r.HwAddr...),
-				Hostname: r.Hostname,
-				ID:       r.ID,
-			},
-			IP: append(net.IP(nil), r.IP...),
+			Client: r.Clone(),
+			IP:     append(net.IP(nil), r.IP...),
 		})
 	}
 
@@ -138,6 +134,33 @@ func (db *Database) staticOwner(ip net.IP) (string, bool) {
 	r, ok := db.static[ip.String()]
 
 	return r.HwAddr.String(), ok
+}
+
+// checkStatic reports whether ip is statically reserved, and returns
+// lease.ErrAddressReserved if it is reserved for another client than the one
+// with clientID.
+func (db *Database) checkStatic(ctx context.Context, ip net.IP, clientID string) (bool, error) {
+	owner, ok := db.staticOwner(ip)
+	if !ok {
+		return false, nil
+	}
+
+	if owner != clientID {
+		dhcpLog.With(ctx, db.l).Debugf("IP %s statically reserved for client %s", ip, owner)
+		return true, lease.ErrAddressReserved
+	}
+
+	return true, nil
+}
+
+// deleteEntry deletes the lease or reservation of ip for the client with
+// clientID from the storage, unless it's already gone.
+func (db *Database) deleteEntry(ctx context.Context, ip net.IP, clientID string) error {
+	if err := db.store.Delete(ctx, ip, clientID); err != nil && !IsNotFound(err) {
+		return err
+	}
+
+	return nil
 }
 
 // ReserveStatic implements lease.Database
@@ -173,14 +196,7 @@ func (db *Database) ReserveStatic(ctx context.Context, ip net.IP, cli lease.Clie
 		}
 	}
 
-	db.static[ip4.String()] = lease.ReservedAddress{
-		Client: lease.Client{
-			HwAddr:   append(net.HardwareAddr(nil), cli.HwAddr...),
-			Hostname: cli.Hostname,
-			ID:       cli.ID,
-		},
-		IP: ip4,
-	}
+	db.static[ip4.String()] = lease.ReservedAddress{Client: cli.Clone(), IP: ip4}
 
 	dhcpLog.With(ctx, db.l).Debugf("statically reserved IP %s for client %s", ip4, clientID)
 
@@ -206,7 +222,7 @@ func (db *Database) RemoveStaticConflicts(ctx context.Context) error {
 			l.Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", r.IP, existingClient, owner)
 		}
 
-		if err := db.store.Delete(ctx, r.IP, existingClient); err != nil && !IsNotFound(err) {
+		if err := db.deleteEntry(ctx, r.IP, existingClient); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -220,14 +236,9 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 
 	clientID := cli.HwAddr.String()
 
-	if owner, ok := db.staticOwner(ip); ok {
-		if owner != clientID {
-			l.Debugf("address %s statically reserved for %s", ip, owner)
-			return lease.ErrAddressReserved
-		}
-
+	if static, err := db.checkStatic(ctx, ip, clientID); static {
 		// static reservations don't expire
-		return nil
+		return err
 	}
 
 	existingClient, leased, expiration, err := db.store.FindByIP(ctx, ip)
@@ -247,7 +258,7 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 		// the IP address for this client. Storages can't update an entry
 		// to belong to another client
 		l.Debugf("removing expired entry of IP %s for client %s", ip, existingClient)
-		if err := db.store.Delete(ctx, ip, existingClient); err != nil && !IsNotFound(err) {
+		if err := db.deleteEntry(ctx, ip, existingClient); err != nil {
 			return err
 		}
 
@@ -285,10 +296,9 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 
 	clientID := cli.HwAddr.String()
 
-	if owner, ok := db.staticOwner(ip); ok {
-		if owner != clientID {
-			l.Debugf("IP %s statically reserved for client %s", ip.String(), owner)
-			return 0, lease.ErrAddressReserved
+	if static, err := db.checkStatic(ctx, ip, clientID); static {
+		if err != nil {
+			return 0, err
 		}
 
 		// leases of statically reserved addresses aren't stored
@@ -336,7 +346,7 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 
 		// IP lease already expired so we can delete it
 		l.Infof("IP %s entry for client %s expired, overwritting (leased = %v)", ip, cli, leased)
-		if err := db.store.Delete(ctx, ip, existingClient); err != nil {
+		if err := db.deleteEntry(ctx, ip, existingClient); err != nil {
 			return 0, err
 		}
 
@@ -354,6 +364,10 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 
 // DeleteReservation implements lease.Database
 func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease.Client) error {
+	if _, ok := db.staticOwner(ip); ok {
+		return lease.ErrStaticReservation
+	}
+
 	clientID := ""
 	if cli != nil {
 		clientID = cli.HwAddr.String()

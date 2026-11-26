@@ -19,6 +19,10 @@ var (
 
 	// ErrInvalidAddress indicates that the IP address is invalid
 	ErrInvalidAddress = errors.New("invalid IP address")
+
+	// ErrStaticReservation indicates that the IP address is statically
+	// reserved, which only the configuration can change
+	ErrStaticReservation = errors.New("IP is statically reserved")
 )
 
 // Database describes a lease database interface
@@ -67,10 +71,10 @@ type Database interface {
 	// anything. Static reservations are kept in memory only, so they
 	// must be made again whenever the database is opened. Release
 	// succeeds for a statically reserved IP address without doing
-	// anything, DeleteReservation doesn't remove static reservations,
-	// and ReservedAddresses returns them without an expiration time.
-	// ReserveStatic fails if the IP address or the client already has
-	// a different static reservation
+	// anything, DeleteReservation fails with ErrStaticReservation, and
+	// ReservedAddresses returns static reservations without an
+	// expiration time. ReserveStatic fails if the IP address or the
+	// client already has a different static reservation
 	ReserveStatic(context.Context, net.IP, Client) error
 
 	// RemoveStaticConflicts removes the stored leases and reservations

@@ -21,3 +21,12 @@ type Client struct {
 func (cli *Client) String() string {
 	return fmt.Sprintf("%s (hostname=%s, id=%s)", cli.HwAddr, cli.Hostname, cli.ID)
 }
+
+// Clone returns a deep copy of the client
+func (cli *Client) Clone() Client {
+	return Client{
+		HwAddr:   append(net.HardwareAddr{}, cli.HwAddr...),
+		Hostname: cli.Hostname,
+		ID:       cli.ID,
+	}
+}

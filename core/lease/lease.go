@@ -31,11 +31,7 @@ func (l *Lease) Expired() bool {
 // Clone returns a deep copy of the lease
 func (l *Lease) Clone() *Lease {
 	return &Lease{
-		Client: Client{
-			HwAddr:   append(net.HardwareAddr{}, l.Client.HwAddr...),
-			ID:       l.Client.ID,
-			Hostname: l.Client.Hostname,
-		},
+		Client:  l.Client.Clone(),
 		Expires: l.Expires,
 		Address: append(net.IP{}, l.Address...),
 	}
