@@ -6,6 +6,7 @@ var Directives = []string{
 	"log",
 	"database",
 	"interface",
+	"transport",
 	"gotify",
 	"mqtt",
 	"option",

@@ -128,6 +128,16 @@ func (c *fakeConn) SetWriteDeadline(t time.Time) error { return nil }
 func (c *fakeConn) exchange(t *testing.T, req *dhcpv4.DHCPv4) *dhcpv4.DHCPv4 {
 	t.Helper()
 
+	resp, _ := c.exchangeTo(t, req)
+
+	return resp
+}
+
+// exchangeTo sends req to the server and returns its response, and the
+// address the server sent it to.
+func (c *fakeConn) exchangeTo(t *testing.T, req *dhcpv4.DHCPv4) (*dhcpv4.DHCPv4, net.Addr) {
+	t.Helper()
+
 	client := &net.UDPAddr{IP: net.IPv4zero, Port: dhcpv4.ClientPort}
 
 	select {
@@ -140,10 +150,10 @@ func (c *fakeConn) exchange(t *testing.T, req *dhcpv4.DHCPv4) *dhcpv4.DHCPv4 {
 	case p := <-c.responses:
 		resp, err := dhcpv4.FromBytes(p.payload)
 		require.NoError(t, err)
-		return resp
+		return resp, p.addr
 	case <-time.After(5 * time.Second):
 		t.Fatal("server didn't respond")
-		return nil
+		return nil, nil
 	}
 }
 
@@ -756,6 +766,115 @@ func TestServeFailure(t *testing.T) {
 			t.Errorf("stopping the server was reported as a failure: %s", err)
 		default:
 		}
+	})
+}
+
+// TestServeUDPTransport checks that servers with the udp transport open their
+// connection with ListenUDP, and broadcast the replies for clients without an
+// address instead of sending them to their hardware address.
+func TestServeUDPTransport(t *testing.T) {
+	conn := newFakeConn()
+	t.Cleanup(dhcpserver.SetListenUDP(func(_ log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
+		assert.Equal(t, "127.0.0.1", ip.String())
+		assert.Equal(t, "lo", ifc.Name)
+		return conn, nil
+	}))
+
+	app := provisionApp(t, `
+127.0.0.1/8 {
+	transport udp
+	database memory
+	lease 1h
+	range 127.0.0.100 127.0.0.200
+}
+`, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+		t.Error("a server with the udp transport opened the connection of the packet transport")
+		return nil, assert.AnError
+	})
+
+	require.NoError(t, app.Start())
+	t.Cleanup(func() { assert.NoError(t, app.Stop()) })
+
+	broadcast := &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
+	mac := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee}
+
+	discover, err := dhcpv4.NewDiscovery(mac)
+	require.NoError(t, err)
+	require.False(t, discover.IsBroadcast())
+
+	offer, to := conn.exchangeTo(t, discover)
+	assert.Equal(t, dhcpv4.MessageTypeOffer, offer.MessageType())
+	assert.Equal(t, "127.0.0.100", offer.YourIPAddr.String())
+	assert.Equal(t, broadcast, to)
+
+	request, err := dhcpv4.NewRequestFromOffer(offer)
+	require.NoError(t, err)
+
+	ack, to := conn.exchangeTo(t, request)
+	assert.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
+	assert.Equal(t, broadcast, to)
+
+	// A client that has an address gets replies at that address
+	renew, err := dhcpv4.New(
+		dhcpv4.WithHwAddr(mac),
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+		dhcpv4.WithClientIP(ack.YourIPAddr),
+	)
+	require.NoError(t, err)
+
+	ack, to = conn.exchangeTo(t, renew)
+	assert.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
+	assert.Equal(t, &net.UDPAddr{IP: net.IP{127, 0, 0, 100}, Port: dhcpv4.ClientPort}, to)
+}
+
+// TestTransports checks that all servers must use the same, known transport.
+func TestTransports(t *testing.T) {
+	provision := func(t *testing.T, app *dhcpserver.App) error {
+		t.Helper()
+
+		ctx, cancel := caddy.NewContext(caddy.Context{Context: context.Background()})
+		t.Cleanup(cancel)
+
+		err := app.Provision(ctx)
+		assert.NoError(t, app.Cleanup())
+
+		return err
+	}
+
+	t.Run("same", func(t *testing.T) {
+		// packet is the default
+		_, app, err := adapt(t, `
+127.0.0.1/8 {
+	transport packet
+	database memory
+}
+
+lo {
+	database memory
+}
+`)
+		require.NoError(t, err)
+		assert.NoError(t, provision(t, app))
+	})
+
+	t.Run("mixed", func(t *testing.T) {
+		_, app, err := adapt(t, `
+127.0.0.1/8 {
+	transport udp
+	database memory
+}
+
+lo {
+	database memory
+}
+`)
+		require.NoError(t, err)
+		assert.ErrorContains(t, provision(t, app), "subnet 127.0.0.1/8 uses the udp transport, but subnet lo uses the packet transport")
+	})
+
+	t.Run("unknown", func(t *testing.T) {
+		app := &dhcpserver.App{Servers: []*dhcpserver.Server{{Subnet: "127.0.0.1/8", Transport: "raw"}}}
+		assert.ErrorContains(t, provision(t, app), `unknown transport "raw" for subnet 127.0.0.1/8`)
 	})
 }
 

@@ -22,10 +22,24 @@ import (
 	"go.uber.org/zap"
 )
 
-// listenDHCP opens the connection a server receives requests on and sends
-// responses through. Tests replace it so they don't need raw sockets.
+// The transports a server can exchange messages with clients through, see
+// Server.Transport.
+const (
+	TransportPacket = "packet"
+	TransportUDP    = "udp"
+)
+
+// listenDHCP opens the connection a server with the packet transport receives
+// requests on and sends responses through. Tests replace it so they don't
+// need raw sockets.
 var listenDHCP = func(l log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
 	return socket.ListenDHCP(l, ip, ifc)
+}
+
+// listenUDP opens the connection of a server with the udp transport. Tests
+// replace it so they don't need port 67.
+var listenUDP = func(l log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
+	return socket.ListenUDP(l, ip, ifc)
 }
 
 // probeAddress reports whether a device on the network of ifc, where the
@@ -47,6 +61,18 @@ type Server struct {
 	// Interface is the name of the network interface to serve the subnet on.
 	// It defaults to the interface that has the server's address assigned.
 	Interface string `json:"interface,omitempty"`
+
+	// Transport is how the server exchanges messages with clients: "packet"
+	// (the default) or "udp". All servers must use the same transport.
+	//
+	// The packet transport reads requests from an AF_PACKET socket on the
+	// interface, which needs the CAP_NET_RAW capability, and sends replies
+	// for clients that don't have an address yet to their hardware address,
+	// as RFC 2131 prefers. The udp transport uses UDP sockets only: all
+	// servers read requests from one socket on port 67 of all addresses, and
+	// broadcast the replies that the packet transport sends to a hardware
+	// address, which RFC 2131 allows.
+	Transport string `json:"transport,omitempty"`
 
 	// DatabaseConfig configures the lease database. It defaults to a bolt
 	// database in the file "<server address>.db" in the working directory.
@@ -192,9 +218,27 @@ func (s *Server) buildMiddlewareChain(handlers []plugin.Middleware) {
 	s.chain = chain
 }
 
+// transport returns the server's transport, TransportPacket if none is set.
+func (s *Server) transport() string {
+	if s.Transport == "" {
+		return TransportPacket
+	}
+
+	return s.Transport
+}
+
+// listen opens the server's connection, with its transport.
+func (s *Server) listen() (net.PacketConn, error) {
+	if s.transport() == TransportUDP {
+		return listenUDP(s.logger, s.IP, &s.iface)
+	}
+
+	return listenDHCP(s.logger, s.IP, &s.iface)
+}
+
 // start opens the server's connection and starts serving requests from it.
 func (s *Server) start() error {
-	conn, err := listenDHCP(s.logger, s.IP, &s.iface)
+	conn, err := s.listen()
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s (%s): %w", s.IP, s.iface.Name, err)
 	}
@@ -395,6 +439,10 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Server, 
 	// messages to the client's hardware address and 'yiaddr' address.  In
 	// all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
 	// messages to 0xffffffff.
+	if a, ok := addr.(*net.UDPAddr); ok {
+		return udpReplyAddr(l, a, req, resp)
+	}
+
 	if a, ok := addr.(*socket.Addr); ok {
 		// if we known our local IP and MAC address we'll use that for sending
 		if a.Local.IP.IsUnspecified() || a.Local.IP.String() == "255.255.255.255" {
@@ -437,6 +485,44 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Server, 
 	}
 
 	return addr
+}
+
+// udpReplyAddr returns the address to send resp, the reply to req, to
+// through a connection that read req from peer, a UDP address. Such
+// connections, like those of the udp transport, can't send to the hardware
+// address of a client, so udpReplyAddr follows RFC 2131 like
+// updateConnectionAddresses, except that it broadcasts the replies that
+// RFC 2131 unicasts to the hardware address and 'yiaddr' of a client, which
+// RFC 2131 allows if unicasting isn't possible.
+func udpReplyAddr(l log.Logger, peer *net.UDPAddr, req, resp *dhcpv4.DHCPv4) net.Addr {
+	if req.GatewayIPAddr != nil && !req.GatewayIPAddr.IsUnspecified() {
+		l.Warnf("DHCP relay agents are not yet supported. giaddr=%s", req.GatewayIPAddr)
+		return peer
+	}
+
+	broadcast := &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
+	hasClientIP := req.ClientIPAddr != nil && !req.ClientIPAddr.IsUnspecified()
+
+	switch {
+	case hasClientIP && (Offer(resp) || Ack(resp)):
+		l.Debugf("unicasting to ciaddr %s", req.ClientIPAddr)
+		return &net.UDPAddr{IP: req.ClientIPAddr, Port: dhcpv4.ClientPort}
+
+	case !hasClientIP && req.IsBroadcast():
+		l.Debugf("broadcasting to %s (broadcast bit set)", broadcast.IP)
+		return broadcast
+
+	case !hasClientIP:
+		l.Debugf("broadcasting to %s instead of unicasting to yiaddr %s (the udp transport can't send to hardware addresses)", broadcast.IP, resp.YourIPAddr)
+		return broadcast
+
+	case Nak(resp):
+		l.Debugf("broadcasting to %s (NAK)", broadcast.IP)
+		return broadcast
+	}
+
+	l.Debugf("sending (unmodified) response to %s", peer)
+	return peer
 }
 
 // Interface guards

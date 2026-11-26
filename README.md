@@ -15,6 +15,8 @@ NextDHCP is an easy to use and extensible DHCP server that chains plugins. It's 
 
 NextDHCP runs on Linux only: it talks to DHCP clients through AF_PACKET sockets, which other operating systems don't have. You can still work on the code elsewhere, since every package except the `nextdhcp` command itself builds on any system, and build the server for Linux with `GOOS=linux`.
 
+AF_PACKET sockets need the `CAP_NET_RAW` capability. Where NextDHCP doesn't have it, for example in a container, the [transport](./plugin/transport) directive makes it use UDP sockets only, at the cost of broadcasting the replies it would otherwise send straight to clients that don't have an IP address yet.
+
 To install, build and test NextDHCP you need [Go](https://go.dev) 1.26 or newer. For testing it is also recommended to have at least one virtual machine available.
 
 ### Installing
@@ -81,6 +83,7 @@ sudo ./nextdhcp
 - [**ranges**](./plugin/ranges) - lease IP addresses from pre-defined IP ranges
 - [**servername**](./plugin/servername) - sets the server hostname on DHCP messages
 - [**static**](./plugin/static) - lease static IP addresses to clients based on their MAC address
+- [**transport**](./plugin/transport) - talk to clients through UDP sockets instead of AF_PACKET sockets, without the CAP_NET_RAW capability
 - [**gotify**](./plugin/gotify) - send push notifications for IP address leases and DHCP requests via gotify
 - [**mqtt**](./plugin/mqtt) - extract and publish DHCP request/response information to MQTT
 

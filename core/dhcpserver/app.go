@@ -33,11 +33,38 @@ func (App) CaddyModule() caddy.ModuleInfo {
 func (a *App) Provision(ctx caddy.Context) error {
 	a.failed = make(chan error, 1)
 
+	if err := checkTransports(a.Servers); err != nil {
+		return err
+	}
+
 	for _, s := range a.Servers {
 		s.failed = a.failed
 
 		if err := s.Provision(ctx); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// checkTransports checks that the servers use known transports, and all the
+// same one: the socket on port 67 of all addresses that the servers with the
+// udp transport share conflicts with the sockets on port 67 of their own
+// addresses that the servers with the packet transport open.
+func checkTransports(servers []*Server) error {
+	for _, s := range servers {
+		switch s.Transport {
+		case "", TransportPacket, TransportUDP:
+		default:
+			return fmt.Errorf("unknown transport %q for subnet %s: it must be %q or %q", s.Transport, s.Subnet, TransportPacket, TransportUDP)
+		}
+	}
+
+	for i := 1; i < len(servers); i++ {
+		if first, s := servers[0], servers[i]; s.transport() != first.transport() {
+			return fmt.Errorf("subnet %s uses the %s transport, but subnet %s uses the %s transport: all subnets must use the same transport",
+				first.Subnet, first.transport(), s.Subnet, s.transport())
 		}
 	}
 
