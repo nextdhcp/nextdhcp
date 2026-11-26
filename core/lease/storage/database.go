@@ -256,7 +256,16 @@ func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) er
 
 		// The entry of the other client expired, so remove it and reserve
 		// the IP address for this client. Storages can't update an entry
-		// to belong to another client
+		// to belong to another client, and hold one entry per client, so
+		// keep the expired entry if this client has one for another address
+		clientIP, _, _, err := db.store.FindByID(ctx, clientID)
+		switch {
+		case err == nil:
+			return &ErrDuplicateClientID{ClientID: clientID, IP: clientIP}
+		case !IsNotFound(err):
+			return err
+		}
+
 		l.Debugf("removing expired entry of IP %s for client %s", ip, existingClient)
 		if err := db.deleteEntry(ctx, ip, existingClient); err != nil {
 			return err

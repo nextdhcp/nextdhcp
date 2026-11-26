@@ -262,3 +262,29 @@ func TestReleaseStaticConflict(t *testing.T) {
 		})
 	}
 }
+
+// TestReserveExpiredKeptForClientWithAddress checks that reserving an IP
+// address whose entry of another client expired doesn't remove that entry
+// if the client can't get the address anyway, as it has another one.
+func TestReserveExpiredKeptForClientWithAddress(t *testing.T) {
+	ctx := context.Background()
+	client1 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	client2 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+
+	for _, driver := range []string{"memory", "bolt"} {
+		t.Run(driver, func(t *testing.T) {
+			store := openStorage(t, driver)
+			require.NoError(t, store.Create(ctx, net.IP{10, 0, 0, 1}, client1.HwAddr.String(), true, time.Now().Add(-time.Minute)))
+			require.NoError(t, store.Create(ctx, net.IP{10, 0, 0, 2}, client2.HwAddr.String(), false, time.Now().Add(time.Minute)))
+
+			db := storage.NewDatabase(store)
+
+			var duplicate *storage.ErrDuplicateClientID
+			assert.ErrorAs(t, db.Reserve(ctx, net.IP{10, 0, 0, 1}, client2), &duplicate)
+
+			owner, _, _, err := store.FindByIP(ctx, net.IP{10, 0, 0, 1})
+			require.NoError(t, err)
+			assert.Equal(t, client1.HwAddr.String(), owner)
+		})
+	}
+}
