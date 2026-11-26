@@ -145,22 +145,13 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 	return nil
 }
 
-// Cleanup disconnects from the MQTT brokers.
+// Cleanup disconnects from the MQTT brokers. It doesn't wait for connections
+// still being opened, which disconnect once they are.
 func (m *mqttPlugin) Cleanup() error {
 	for _, cfg := range m.configs {
-		if cfg.conn == nil {
-			continue
+		if cfg.conn != nil {
+			cfg.conn.close()
 		}
-
-		cfg.conn.l.Lock()
-		// keep messages still being published from opening a new
-		// connection that nothing would close
-		cfg.conn.closed = true
-		if cfg.conn.c != nil {
-			cfg.conn.c.Disconnect(250)
-			cfg.conn.c = nil
-		}
-		cfg.conn.l.Unlock()
 	}
 
 	return nil
