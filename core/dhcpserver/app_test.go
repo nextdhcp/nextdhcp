@@ -111,6 +111,21 @@ const servingDhcpfile = `
 }
 `
 
+// bind sends a DISCOVER for client and a REQUEST for the address the server
+// offers, and returns the offer and the server's response to the request.
+func (c *fakeConn) bind(t *testing.T, client net.HardwareAddr) (offer, ack *dhcpv4.DHCPv4) {
+	t.Helper()
+
+	discover, err := dhcpv4.NewDiscovery(client)
+	require.NoError(t, err)
+
+	offer = c.exchange(t, discover)
+	request, err := dhcpv4.NewRequestFromOffer(offer)
+	require.NoError(t, err)
+
+	return offer, c.exchange(t, request)
+}
+
 // TestServe serves DISCOVER and REQUEST messages with an app adapted from a
 // Dhcpfile, through a connection that doesn't need raw socket privileges.
 func TestServe(t *testing.T) {
@@ -205,6 +220,16 @@ func startApp(t *testing.T, dhcpfile string) *fakeConn {
 	t.Helper()
 
 	conn := newFakeConn()
+	startAppWithConn(t, dhcpfile, conn)
+
+	return conn
+}
+
+// startAppWithConn is like startApp, but its server serves conn, and it
+// returns the app.
+func startAppWithConn(t *testing.T, dhcpfile string, conn *fakeConn) *dhcpserver.App {
+	t.Helper()
+
 	app := provisionApp(t, dhcpfile, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
 		return conn, nil
 	})
@@ -212,7 +237,7 @@ func startApp(t *testing.T, dhcpfile string) *fakeConn {
 	require.NoError(t, app.Start())
 	t.Cleanup(func() { assert.NoError(t, app.Stop()) })
 
-	return conn
+	return app
 }
 
 // TestStaticAddressReserved checks that an address the static plugin assigns
@@ -237,17 +262,9 @@ func TestStaticAddressReserved(t *testing.T) {
 	leaseAddress := func(t *testing.T, conn *fakeConn, client net.HardwareAddr, ip string) {
 		t.Helper()
 
-		discover, err := dhcpv4.NewDiscovery(client)
-		require.NoError(t, err)
-
-		offer := conn.exchange(t, discover)
+		offer, ack := conn.bind(t, client)
 		assert.Equal(t, dhcpv4.MessageTypeOffer, offer.MessageType())
 		assert.Equal(t, ip, offer.YourIPAddr.String())
-
-		request, err := dhcpv4.NewRequestFromOffer(offer)
-		require.NoError(t, err)
-
-		ack := conn.exchange(t, request)
 		assert.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
 		assert.Equal(t, ip, ack.YourIPAddr.String())
 	}
@@ -359,13 +376,7 @@ func TestLeaseTimeOfKeptLease(t *testing.T) {
 	conn := startApp(t, servingDhcpfile)
 	mac := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee}
 
-	discover, err := dhcpv4.NewDiscovery(mac)
-	require.NoError(t, err)
-	offer := conn.exchange(t, discover)
-	request, err := dhcpv4.NewRequestFromOffer(offer)
-	require.NoError(t, err)
-
-	ack := conn.exchange(t, request)
+	_, ack := conn.bind(t, mac)
 	require.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
 	assert.Equal(t, time.Hour, ack.IPAddressLeaseTime(0))
 
@@ -384,21 +395,9 @@ func TestLeaseTimeOfKeptLease(t *testing.T) {
 // TestServeFailure checks that the app reports a server that stops serving
 // because reading requests fails, but not a server that is stopped.
 func TestServeFailure(t *testing.T) {
-	start := func(t *testing.T, conn *fakeConn) *dhcpserver.App {
-		t.Helper()
-
-		app := provisionApp(t, servingDhcpfile, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
-			return conn, nil
-		})
-		require.NoError(t, app.Start())
-
-		return app
-	}
-
 	t.Run("read error", func(t *testing.T) {
 		conn := newFakeConn()
-		app := start(t, conn)
-		t.Cleanup(func() { assert.NoError(t, app.Stop()) })
+		app := startAppWithConn(t, servingDhcpfile, conn)
 
 		conn.readErrs <- errors.New("the interface went away")
 
@@ -416,7 +415,7 @@ func TestServeFailure(t *testing.T) {
 		// net.ErrClosed
 		conn := newFakeConn()
 		conn.closeErr = errors.New("use of closed file")
-		app := start(t, conn)
+		app := startAppWithConn(t, servingDhcpfile, conn)
 
 		// Stop returns once the server stopped serving
 		require.NoError(t, app.Stop())
