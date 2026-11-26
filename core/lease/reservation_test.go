@@ -29,6 +29,32 @@ func TestReservedAddressExpired(t *testing.T) {
 	assert.False(t, r.Expired(time.Now().Add(time.Hour*24*356)))
 }
 
+func TestReservedAddressClone(t *testing.T) {
+	expires := time.Now().Add(time.Minute)
+	r := ReservedAddress{
+		Client: Client{
+			Hostname: "hostname",
+			ID:       "id",
+			HwAddr:   net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+		},
+		IP:      net.IP{192, 168, 0, 1},
+		Expires: &expires,
+	}
+
+	c := r.Clone()
+	assert.Equal(t, r, c)
+
+	c.HwAddr[0] = 0x00
+	c.IP[0] = 10
+	*c.Expires = c.Expires.Add(time.Hour)
+	assert.Equal(t, byte(0xaa), r.HwAddr[0])
+	assert.Equal(t, byte(192), r.IP[0])
+	assert.Equal(t, expires, *r.Expires)
+
+	r.Expires = nil
+	assert.Nil(t, r.Clone().Expires)
+}
+
 func makeReservedAddressList() ReservedAddressList {
 	list := []ReservedAddress{}
 	for i := 0; i < 10; i++ {

@@ -71,7 +71,7 @@ func TestReserveStatic(t *testing.T) {
 
 		// the database is opened again
 		db = storage.NewDatabase(store)
-		require.NoError(t, db.ReserveStatic(ctx, net.ParseIP("10.0.0.1"), staticClient))
+		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
 
 		// other clients can neither renew, lease nor reserve the address
 		_, err = db.Lease(ctx, staticIP, client1, time.Hour, true)
@@ -138,9 +138,9 @@ func TestReserveStatic(t *testing.T) {
 		assert.ErrorIs(t, db.Reserve(ctx, staticIP, client2), lease.ErrAddressReserved)
 
 		// static reservations can be repeated, but not changed
-		assert.NoError(t, db.ReserveStatic(ctx, staticIP, staticClient))
-		assert.Error(t, db.ReserveStatic(ctx, staticIP, client2))
-		assert.Error(t, db.ReserveStatic(ctx, net.IP{10, 0, 0, 4}, staticClient))
+		assert.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: staticIP}))
+		assert.Error(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: client2, IP: staticIP}))
+		assert.Error(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.IP{10, 0, 0, 4}}))
 	})
 }
 
@@ -149,10 +149,16 @@ func TestReserveStaticInvalid(t *testing.T) {
 	ctx := context.Background()
 
 	client := lease.Client{HwAddr: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}}
-	assert.ErrorIs(t, db.ReserveStatic(ctx, net.ParseIP("fd00::1"), client), lease.ErrInvalidAddress)
-	assert.ErrorIs(t, db.ReserveStatic(ctx, nil, client), lease.ErrInvalidAddress)
+	err := db.ReserveStatic(ctx, lease.ReservedAddress{Client: client, IP: net.ParseIP("fd00::1")})
+	assert.ErrorIs(t, err, lease.ErrInvalidAddress)
+	assert.ErrorContains(t, err, "fd00::1 is not an IPv4 address")
+	assert.ErrorIs(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: client}), lease.ErrInvalidAddress)
 
-	assert.Error(t, db.ReserveStatic(ctx, net.IP{10, 0, 0, 1}, lease.Client{ID: "client"}))
+	assert.Error(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: lease.Client{ID: "client"}, IP: net.IP{10, 0, 0, 1}}))
+
+	// static reservations don't expire
+	expires := time.Now().Add(time.Hour)
+	assert.Error(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: client, IP: net.IP{10, 0, 0, 1}, Expires: &expires}))
 }
 
 // TestReserveExpiredOfOtherClient checks that an IP address whose reservation
@@ -244,7 +250,7 @@ func TestReleaseStaticConflict(t *testing.T) {
 		require.NoError(t, store.Create(ctx, staticIP, other.HwAddr.String(), true, time.Now().Add(time.Hour)))
 
 		db := storage.NewDatabase(store)
-		require.NoError(t, db.ReserveStatic(ctx, net.ParseIP("10.0.0.1"), staticClient))
+		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
 
 		require.NoError(t, db.Release(ctx, staticIP))
 

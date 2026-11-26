@@ -50,8 +50,8 @@ func (m *MockDatabase) DeleteReservation(_ context.Context, ip net.IP, cli *leas
 }
 
 // ReserveStatic implements the lease.Database interface
-func (m *MockDatabase) ReserveStatic(_ context.Context, ip net.IP, cli lease.Client) error {
-	return m.Called(ip, cli).Error(0)
+func (m *MockDatabase) ReserveStatic(_ context.Context, r lease.ReservedAddress) error {
+	return m.Called(r).Error(0)
 }
 
 // RemoveStaticConflicts implements the lease.Database interface

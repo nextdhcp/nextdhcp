@@ -54,10 +54,6 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("no IP address configured for client %s", key)
 		}
 
-		if ip.To4() == nil {
-			return fmt.Errorf("static IP %s for client %s is not an IPv4 address", ip, key)
-		}
-
 		if _, ok := addresses[mac.String()]; ok {
 			return fmt.Errorf("static IP address has already been configured for client %s", mac)
 		}
@@ -79,7 +75,7 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 	// Reserve the addresses in the lease database, so other plugins, like
 	// range, don't lease them to other clients
 	for _, r := range reservations {
-		if err := db.ReserveStatic(ctx, r.IP, r.Client); err != nil {
+		if err := db.ReserveStatic(ctx, r); err != nil {
 			return fmt.Errorf("failed to reserve static IP %s for client %s: %w", r.IP, r.ID, err)
 		}
 	}

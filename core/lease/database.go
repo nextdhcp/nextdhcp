@@ -65,20 +65,21 @@ type Database interface {
 	// DeleteReservation deletes a IP address reservation
 	DeleteReservation(context.Context, net.IP, *Client) error
 
-	// ReserveStatic reserves an IPv4 address for a client, identified
-	// by its hardware address, for as long as the database is open,
-	// like a static address configured for the client: Reserve and
-	// Lease fail with ErrAddressReserved for the IP address and any
+	// ReserveStatic reserves the IPv4 address of r for its client,
+	// identified by its hardware address, for as long as the database
+	// is open, like a static address configured for the client: Reserve
+	// and Lease fail with ErrAddressReserved for the IP address and any
 	// other client, and succeed for the client without storing
 	// anything. Static reservations are kept in memory only, so they
 	// must be made again whenever the database is opened. Release
 	// succeeds for a statically reserved IP address, removing any
 	// stored lease or reservation of it but not the static
-	// reservation, DeleteReservation fails with ErrStaticReservation, and
-	// ReservedAddresses returns static reservations without an
-	// expiration time. ReserveStatic fails if the IP address or the
-	// client already has a different static reservation
-	ReserveStatic(context.Context, net.IP, Client) error
+	// reservation, DeleteReservation fails with ErrStaticReservation,
+	// and ReservedAddresses returns static reservations without an
+	// expiration time. ReserveStatic fails if r has an expiration time,
+	// or if the IP address or the client already has a different
+	// static reservation
+	ReserveStatic(context.Context, ReservedAddress) error
 
 	// RemoveStaticConflicts removes the stored leases and reservations
 	// of statically reserved IP addresses. Another client can't renew
