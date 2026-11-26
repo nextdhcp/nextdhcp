@@ -54,6 +54,10 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("no IP address configured for client %s", key)
 		}
 
+		if ip.To4() == nil {
+			return fmt.Errorf("static IP %s for client %s is not an IPv4 address", ip, key)
+		}
+
 		if _, ok := addresses[mac.String()]; ok {
 			return fmt.Errorf("static IP address has already been configured for client %s", mac)
 		}

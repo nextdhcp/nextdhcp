@@ -59,7 +59,7 @@ func TestStaticPluginSetup(t *testing.T) {
 	assert.Error(t, err)
 
 	_, err = makeStaticPlugin(t, "static 00:aa:bb:cc:dd:ee fd00::1")
-	assert.Error(t, err)
+	assert.ErrorContains(t, err, "static IP fd00::1 for client 00:aa:bb:cc:dd:ee is not an IPv4 address")
 }
 
 // TestStaticPluginReservesAddresses checks that the addresses are reserved in
