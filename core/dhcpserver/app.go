@@ -1,6 +1,7 @@
 package dhcpserver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -48,6 +49,14 @@ func (a *App) Start() error {
 			}
 
 			return err
+		}
+	}
+
+	// Only remove the leases that contradict static reservations once all
+	// servers serve, so they are kept if NextDHCP fails to start
+	for _, s := range a.Servers {
+		if err := s.Database.RemoveStaticConflicts(context.Background()); err != nil {
+			s.logger.Errorf("failed to remove leases of static IP addresses of subnet %s: %s", s.Network.String(), err.Error())
 		}
 	}
 

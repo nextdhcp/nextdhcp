@@ -54,5 +54,10 @@ func (m *MockDatabase) ReserveStatic(_ context.Context, ip net.IP, cli lease.Cli
 	return m.Called(ip, cli).Error(0)
 }
 
+// RemoveStaticConflicts implements the lease.Database interface
+func (m *MockDatabase) RemoveStaticConflicts(context.Context) error {
+	return m.Called().Error(0)
+}
+
 // compile time check
 var _ lease.Database = &MockDatabase{}

@@ -65,16 +65,24 @@ type Database interface {
 	// Lease fail with ErrAddressReserved for the IP address and any
 	// other client, and succeed for the client without storing
 	// anything. Static reservations are kept in memory only, so they
-	// must be made again whenever the database is opened, but the
-	// leases and reservations that contradict them are removed from
-	// the database: those of the IP address, and those of other IP
-	// addresses for the client. Release succeeds for a statically
-	// reserved IP address without doing anything, DeleteReservation
-	// doesn't remove static reservations, and ReservedAddresses
-	// returns them without an expiration time. ReserveStatic fails if
-	// the IP address or the client already has a different static
-	// reservation
+	// must be made again whenever the database is opened. Release
+	// succeeds for a statically reserved IP address without doing
+	// anything, DeleteReservation doesn't remove static reservations,
+	// and ReservedAddresses returns them without an expiration time.
+	// ReserveStatic fails if the IP address or the client already has
+	// a different static reservation
 	ReserveStatic(context.Context, net.IP, Client) error
+
+	// RemoveStaticConflicts removes the stored leases and reservations
+	// of statically reserved IP addresses. Another client can't renew
+	// its lease or reservation of such an address, and as a client has
+	// a single lease or reservation, it would keep the client from
+	// getting another address. The leases and reservations of other IP
+	// addresses for a client with a static reservation are kept, as
+	// the client uses its lease until it tries to renew it. DHCP
+	// servers call RemoveStaticConflicts once they serve, so nothing
+	// is removed if they fail to start
+	RemoveStaticConflicts(context.Context) error
 }
 
 // Key is a key used to associate a Database with

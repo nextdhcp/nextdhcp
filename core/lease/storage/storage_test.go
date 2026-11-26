@@ -45,17 +45,19 @@ func TestReserveStatic(t *testing.T) {
 	// DHCP messages have addresses in their 4 byte form, while static
 	// addresses are configured in the 16 byte form net.ParseIP returns
 	staticIP := net.IP{10, 0, 0, 1}
+	otherIP := net.IP{10, 0, 0, 2}
 
 	for _, driver := range []string{"memory", "bolt"} {
 		t.Run(driver, func(t *testing.T) {
 			store := openStorage(t, driver)
 
 			// before the address is static, another client leases it, and the
-			// client it's assigned to reserves another one
+			// client it's assigned to leases another one
 			db := storage.NewDatabase(store)
 			_, err := db.Lease(ctx, staticIP, client1, time.Hour, false)
 			require.NoError(t, err)
-			require.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 2}, staticClient))
+			_, err = db.Lease(ctx, otherIP, staticClient, time.Hour, false)
+			require.NoError(t, err)
 
 			// the database is opened again
 			db = storage.NewDatabase(store)
@@ -68,10 +70,25 @@ func TestReserveStatic(t *testing.T) {
 			assert.ErrorIs(t, err, lease.ErrAddressReserved)
 			assert.ErrorIs(t, db.Reserve(ctx, staticIP, client2), lease.ErrAddressReserved)
 
-			// the lease of the other client was removed, so it can get another
-			// address, and so was the reservation of the static client
+			// the lease of the other client is only removed with the conflicts
+			owner, _, _, err := store.FindByIP(ctx, staticIP)
+			require.NoError(t, err)
+			assert.Equal(t, client1.HwAddr.String(), owner)
+
+			require.NoError(t, db.RemoveStaticConflicts(ctx))
+
+			_, _, _, err = store.FindByIP(ctx, staticIP)
+			assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
+
+			// so that client can get another address
 			assert.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 3}, client1))
-			assert.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 2}, client2))
+
+			// the static client uses its lease of another address until it
+			// renews it, so other clients don't get that address before the
+			// lease expires
+			assert.ErrorIs(t, db.Reserve(ctx, otherIP, client2), lease.ErrAddressReserved)
+			_, err = db.Lease(ctx, otherIP, client2, time.Hour, false)
+			assert.ErrorIs(t, err, lease.ErrAddressReserved)
 
 			// the static client can lease and reserve its address
 			assert.NoError(t, db.Reserve(ctx, staticIP, staticClient))
@@ -80,7 +97,7 @@ func TestReserveStatic(t *testing.T) {
 			assert.Equal(t, time.Hour, leaseTime)
 
 			// static reservations are listed once, without expiration time,
-			// and aren't stored
+			// and leases of them aren't stored
 			reserved, err := db.ReservedAddresses(ctx)
 			require.NoError(t, err)
 
@@ -96,7 +113,9 @@ func TestReserveStatic(t *testing.T) {
 
 			leases, err := db.Leases(ctx)
 			require.NoError(t, err)
-			assert.Empty(t, leases)
+			require.Len(t, leases, 1)
+			assert.True(t, leases[0].Address.Equal(otherIP))
+			assert.Equal(t, staticClient.HwAddr.String(), leases[0].ID)
 
 			_, _, _, err = store.FindByIP(ctx, staticIP)
 			assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)

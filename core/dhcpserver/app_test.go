@@ -179,17 +179,12 @@ func TestServe(t *testing.T) {
 	}
 }
 
-// startApp provisions and starts an app adapted from dhcpfile, which must
-// configure a single server, and returns the connection the server serves.
-// The app is stopped and cleaned up when the test ends.
-func startApp(t *testing.T, dhcpfile string) *fakeConn {
+// provisionApp provisions an app adapted from dhcpfile, whose servers open
+// their connection with listen. The app is cleaned up when the test ends.
+func provisionApp(t *testing.T, dhcpfile string, listen func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error)) *dhcpserver.App {
 	t.Helper()
 
-	conn := newFakeConn()
-	restore := dhcpserver.SetListenDHCP(func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
-		return conn, nil
-	})
-	t.Cleanup(restore)
+	t.Cleanup(dhcpserver.SetListenDHCP(listen))
 
 	_, app, err := adapt(t, dhcpfile)
 	require.NoError(t, err)
@@ -199,6 +194,20 @@ func startApp(t *testing.T, dhcpfile string) *fakeConn {
 
 	require.NoError(t, app.Provision(ctx))
 	t.Cleanup(func() { assert.NoError(t, app.Cleanup()) })
+
+	return app
+}
+
+// startApp provisions and starts an app adapted from dhcpfile, which must
+// configure a single server, and returns the connection the server serves.
+// The app is stopped and cleaned up when the test ends.
+func startApp(t *testing.T, dhcpfile string) *fakeConn {
+	t.Helper()
+
+	conn := newFakeConn()
+	app := provisionApp(t, dhcpfile, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+		return conn, nil
+	})
 
 	require.NoError(t, app.Start())
 	t.Cleanup(func() { assert.NoError(t, app.Stop()) })
@@ -222,6 +231,7 @@ func TestStaticAddressReserved(t *testing.T) {
 
 	staticClient := net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
 	otherClient := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}
+	thirdClient := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x02}
 
 	// leaseAddress checks that client gets ip with a DISCOVER and a REQUEST.
 	leaseAddress := func(t *testing.T, conn *fakeConn, client net.HardwareAddr, ip string) {
@@ -302,6 +312,43 @@ func TestStaticAddressReserved(t *testing.T) {
 		// so it gets a new address
 		leaseAddress(t, conn, otherClient, "127.0.0.11")
 		leaseAddress(t, conn, staticClient, "127.0.0.10")
+	})
+
+	t.Run("static client leased another address before", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		require.True(t, t.Run("without static", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
+			leaseAddress(t, conn, otherClient, "127.0.0.10")
+			leaseAddress(t, conn, staticClient, "127.0.0.11")
+		}))
+
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, static))
+
+		// the client uses its lease until it tries to renew it, so other
+		// clients don't get that address
+		leaseAddress(t, conn, thirdClient, "127.0.0.12")
+	})
+
+	t.Run("failed start", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		require.True(t, t.Run("lease", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
+			leaseAddress(t, conn, otherClient, "127.0.0.10")
+		}))
+
+		// NextDHCP fails to start with the address assigned to a client
+		require.True(t, t.Run("static", func(t *testing.T) {
+			app := provisionApp(t, fmt.Sprintf(dhcpfile, database, static), func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+				return nil, assert.AnError
+			})
+			assert.ErrorIs(t, app.Start(), assert.AnError)
+		}))
+
+		// so the lease of the other client is kept
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
+		leaseAddress(t, conn, thirdClient, "127.0.0.11")
 	})
 }
 
