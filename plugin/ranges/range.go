@@ -208,9 +208,11 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 
 			if err == nil {
 				l.Infof("%s (%s): lease %s for %s (activeLeaseTime: %s)", req.ClientHWAddr, state, ip, leaseTime, activeLeaseTime)
-				if leaseTime == time.Hour {
-					res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
-				}
+
+				// tell the client when the database lets the lease expire,
+				// which is earlier than the configured lease time if the
+				// client keeps the lease it has
+				res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
 
 				// make sure we ACK the DHCPREQUEST
 				res.YourIPAddr = ip

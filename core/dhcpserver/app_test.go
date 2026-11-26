@@ -352,6 +352,35 @@ func TestStaticAddressReserved(t *testing.T) {
 	})
 }
 
+// TestLeaseTimeOfKeptLease checks that a client that requests its lease
+// again without renewing it, like after a reboot, is told the time that
+// remains of the lease, which is when the database lets it expire.
+func TestLeaseTimeOfKeptLease(t *testing.T) {
+	conn := startApp(t, servingDhcpfile)
+	mac := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee}
+
+	discover, err := dhcpv4.NewDiscovery(mac)
+	require.NoError(t, err)
+	offer := conn.exchange(t, discover)
+	request, err := dhcpv4.NewRequestFromOffer(offer)
+	require.NoError(t, err)
+
+	ack := conn.exchange(t, request)
+	require.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
+	assert.Equal(t, time.Hour, ack.IPAddressLeaseTime(0))
+
+	reboot, err := dhcpv4.NewDiscovery(mac,
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+		dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(ack.YourIPAddr)),
+	)
+	require.NoError(t, err)
+
+	ack = conn.exchange(t, reboot)
+	require.Equal(t, dhcpv4.MessageTypeAck, ack.MessageType())
+	assert.Less(t, ack.IPAddressLeaseTime(0), time.Hour)
+	assert.Greater(t, ack.IPAddressLeaseTime(0), 59*time.Minute)
+}
+
 // TestServeFailure checks that the app reports a server that stops serving
 // because reading requests fails, but not a server that is stopped.
 func TestServeFailure(t *testing.T) {
