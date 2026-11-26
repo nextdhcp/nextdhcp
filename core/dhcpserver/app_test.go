@@ -245,7 +245,17 @@ func TestStaticAddressReserved(t *testing.T) {
 	t.Run("discover", func(t *testing.T) {
 		conn := startApp(t, fmt.Sprintf(dhcpfile, "memory", static))
 
-		// other clients get the next address of the range
+		// other clients get the next address of the range, even if they ask
+		// for the static one
+		discover, err := dhcpv4.NewDiscovery(otherClient,
+			dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(net.IP{127, 0, 0, 10})),
+		)
+		require.NoError(t, err)
+
+		offer := conn.exchange(t, discover)
+		assert.Equal(t, dhcpv4.MessageTypeOffer, offer.MessageType())
+		assert.Equal(t, "127.0.0.11", offer.YourIPAddr.String())
+
 		leaseAddress(t, conn, otherClient, "127.0.0.11")
 		leaseAddress(t, conn, staticClient, "127.0.0.10")
 	})
