@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -17,6 +18,52 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain makes the servers of all tests find that a device uses each
+// address they ask about, unless a test makes them ask a prober of its own,
+// so that no test sends ARP requests.
+func TestMain(m *testing.M) {
+	restore := dhcpserver.SetProbeAddress((&prober{used: true}).probe)
+	code := m.Run()
+	restore()
+
+	os.Exit(code)
+}
+
+// prober tells servers whether a device uses the addresses they ask about.
+type prober struct {
+	used bool  // whether a device uses each address
+	err  error // the error to fail with instead
+
+	mu    sync.Mutex
+	asked []string // the addresses asked about, by the server's address
+}
+
+func (p *prober) probe(_ context.Context, _ *net.Interface, ip, addr net.IP) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.asked = append(p.asked, fmt.Sprintf("%s by %s", addr, ip))
+
+	return p.used, p.err
+}
+
+// questions returns the addresses p was asked about, by the server's
+// address.
+func (p *prober) questions() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return append([]string(nil), p.asked...)
+}
+
+// useProber makes the servers of the test ask p whether a device uses an
+// address.
+func useProber(t *testing.T, p *prober) {
+	t.Helper()
+
+	t.Cleanup(dhcpserver.SetProbeAddress(p.probe))
+}
 
 type packet struct {
 	payload []byte
@@ -150,6 +197,20 @@ func (c *fakeConn) renew(t *testing.T, client net.HardwareAddr, ip net.IP) *dhcp
 	require.NoError(t, err)
 
 	return c.exchange(t, renew)
+}
+
+// request sends a REQUEST of client for ip, like a client that reboots, and
+// returns the server's response.
+func (c *fakeConn) request(t *testing.T, client net.HardwareAddr, ip net.IP) *dhcpv4.DHCPv4 {
+	t.Helper()
+
+	request, err := dhcpv4.NewDiscovery(client,
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+		dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(ip)),
+	)
+	require.NoError(t, err)
+
+	return c.exchange(t, request)
 }
 
 // TestServe serves DISCOVER and REQUEST messages with an app adapted from a
@@ -518,6 +579,124 @@ func TestStaticAddressReassigned(t *testing.T) {
 		assert.Equal(t, dhcpv4.MessageTypeNak, conn.renew(t, client2, net.IP{127, 0, 0, 51}).MessageType())
 		conn.leaseAddress(t, client1, "127.0.0.51")
 		conn.leaseAddress(t, client2, "127.0.0.50")
+	})
+}
+
+// TestStaticAddressHandedOver checks that a static address that is still
+// leased to another client is given to its client at once if no device on the
+// subnet uses it anymore, and only then, also without range.
+func TestStaticAddressHandedOver(t *testing.T) {
+	const dhcpfile = "127.0.0.1/8 {\n\tdatabase %s\n\t%s\n}\n"
+
+	oldClient := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}
+	newClient := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x02}
+	static := net.IP{127, 0, 0, 10}
+
+	servers := []struct {
+		name          string
+		before, after string
+	}{
+		{
+			// the address is assigned to another client
+			name:   "static",
+			before: "static 00:aa:bb:cc:dd:01 127.0.0.10",
+			after:  "static 00:aa:bb:cc:dd:02 127.0.0.10",
+		},
+		{
+			// the address was leased from the range before it was assigned
+			name:   "static and range",
+			before: "range 127.0.0.10 127.0.0.20",
+			after:  "static 00:aa:bb:cc:dd:02 127.0.0.10\n\trange 127.0.0.10 127.0.0.20",
+		},
+	}
+
+	probes := []struct {
+		name       string
+		used       bool
+		err        error
+		handedOver bool
+	}{
+		{name: "no device", handedOver: true},
+		{name: "device", used: true},
+		{name: "probe failed", err: assert.AnError},
+	}
+
+	for _, server := range servers {
+		for _, probe := range probes {
+			t.Run(server.name+"/"+probe.name, func(t *testing.T) {
+				database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+				require.True(t, t.Run("before", func(t *testing.T) {
+					conn := startApp(t, fmt.Sprintf(dhcpfile, database, server.before))
+					conn.leaseAddress(t, oldClient, "127.0.0.10")
+				}))
+
+				p := &prober{used: probe.used, err: probe.err}
+				useProber(t, p)
+				conn := startApp(t, fmt.Sprintf(dhcpfile, database, server.after))
+
+				res := conn.request(t, newClient, static)
+				assert.Equal(t, []string{"127.0.0.10 by 127.0.0.1"}, p.questions())
+				if probe.handedOver {
+					assert.Equal(t, dhcpv4.MessageTypeAck, res.MessageType())
+					assert.Equal(t, "127.0.0.10", res.YourIPAddr.String())
+				} else {
+					assert.Equal(t, dhcpv4.MessageTypeNak, res.MessageType())
+				}
+
+				// the old client's lease, if it's left, ends when it asks
+				// for the address
+				assert.Equal(t, dhcpv4.MessageTypeNak, conn.renew(t, oldClient, static).MessageType())
+
+				// so the new client has it, or gets it now
+				res = conn.request(t, newClient, static)
+				assert.Equal(t, dhcpv4.MessageTypeAck, res.MessageType())
+				assert.Equal(t, "127.0.0.10", res.YourIPAddr.String())
+			})
+		}
+	}
+
+	t.Run("discover", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		require.True(t, t.Run("before", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, servers[1].before))
+			conn.leaseAddress(t, oldClient, "127.0.0.10")
+		}))
+
+		p := &prober{}
+		useProber(t, p)
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, servers[1].after))
+
+		conn.leaseAddress(t, newClient, "127.0.0.10")
+		assert.Equal(t, []string{"127.0.0.10 by 127.0.0.1"}, p.questions())
+
+		// the old client gets another address
+		assert.Equal(t, dhcpv4.MessageTypeNak, conn.renew(t, oldClient, static).MessageType())
+		conn.leaseAddress(t, oldClient, "127.0.0.11")
+	})
+
+	t.Run("renewal of another address", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		require.True(t, t.Run("before", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, servers[1].before))
+			conn.leaseAddress(t, oldClient, "127.0.0.10")
+			conn.leaseAddress(t, newClient, "127.0.0.11")
+		}))
+
+		p := &prober{}
+		useProber(t, p)
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, servers[1].after))
+
+		// the new client is moved to its static address
+		assert.Equal(t, dhcpv4.MessageTypeNak, conn.renew(t, newClient, net.IP{127, 0, 0, 11}).MessageType())
+		assert.Equal(t, []string{"127.0.0.10 by 127.0.0.1"}, p.questions())
+		conn.leaseAddress(t, newClient, "127.0.0.10")
+
+		// and the address it had is free again
+		assert.Equal(t, dhcpv4.MessageTypeNak, conn.renew(t, oldClient, static).MessageType())
+		conn.leaseAddress(t, oldClient, "127.0.0.11")
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
@@ -46,7 +47,7 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 	// ServeDHCP looks clients up by the canonical (lower case) form of their
 	// MAC address, so store the addresses by that form
 	addresses := make(map[string]net.IP, len(s.Addresses))
-	owners := make(map[string]string, len(s.Addresses))
+	owners := make(map[netip.Addr]lease.ClientID, len(s.Addresses))
 	reservations := make([]lease.ReservedAddress, 0, len(s.Addresses))
 	for key, ip := range s.Addresses {
 		mac, err := net.ParseMAC(key)
@@ -62,12 +63,12 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("static IP address has already been configured for client %s", mac)
 		}
 
-		if other, ok := owners[ip.String()]; ok {
+		if other, ok := owners[addrOf(ip)]; ok {
 			return fmt.Errorf("IP %s already used for client %s", ip, other)
 		}
 
 		addresses[mac.String()] = ip
-		owners[ip.String()] = mac.String()
+		owners[addrOf(ip)] = lease.HardwareAddrID(mac)
 		reservations = append(reservations, lease.ReservedAddress{
 			Client: lease.NewClient(mac),
 			IP:     ip,
