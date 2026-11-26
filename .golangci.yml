@@ -1,13 +1,8 @@
 version: "2"
 
 linters:
-  disable:
-    # Disable soon to deprecated[1] linters that lead to false
-    # positives when build tags disable certain files[2]
-    # 1: https://github.com/golangci/golangci-lint/issues/1841
-    # 2: https://github.com/prometheus/node_exporter/issues/1545
-    - unused
-    - govet
+  # The standard linters: errcheck, govet, ineffassign, staticcheck and unused
+  default: standard
   settings:
     staticcheck:
       # The default checks, and QF1008, which suggests leaving out embedded
