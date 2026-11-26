@@ -50,7 +50,8 @@ type Database interface {
 	// either already be leased to the client or have been reserved
 	// for it. if renew is set, the lease time will always be
 	// updated. Otherwise, the lease time will only be updated if
-	// the lease already expired. The returned lease time indicates
+	// the IP address was only reserved for the client, or if the
+	// lease already expired. The returned lease time indicates
 	// the active lease time either with or without renewal. Any
 	// pending reservation for this IP address will be removed
 	Lease(context.Context, net.IP, Client, time.Duration, bool) (time.Duration, error)

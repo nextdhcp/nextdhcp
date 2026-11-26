@@ -172,3 +172,30 @@ func TestReserveExpiredOfOtherClient(t *testing.T) {
 		})
 	}
 }
+
+// TestLeaseReservedAddress checks that a client that leases the address it
+// reserved gets the full lease time, not what remains of its reservation.
+func TestLeaseReservedAddress(t *testing.T) {
+	ctx := context.Background()
+	ip := net.IP{10, 0, 0, 1}
+	client := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+
+	for _, driver := range []string{"memory", "bolt"} {
+		t.Run(driver, func(t *testing.T) {
+			store := openStorage(t, driver)
+			db := storage.NewDatabase(store)
+
+			// like the range plugin, which reserves the address it offers and
+			// leases it when the client requests it
+			require.NoError(t, db.Reserve(ctx, ip, client))
+			leaseTime, err := db.Lease(ctx, ip, client, time.Hour, false)
+			require.NoError(t, err)
+			assert.Equal(t, time.Hour, leaseTime)
+
+			_, leased, expiration, err := store.FindByIP(ctx, ip)
+			require.NoError(t, err)
+			assert.True(t, leased)
+			assert.WithinDuration(t, time.Now().Add(time.Hour), expiration, 5*time.Second)
+		})
+	}
+}
