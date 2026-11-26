@@ -331,6 +331,51 @@ func TestStaticAddressReserved(t *testing.T) {
 		leaseAddress(t, conn, staticClient, "127.0.0.10")
 	})
 
+	t.Run("not shared", func(t *testing.T) {
+		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
+
+		// another client leases the address before it is assigned to a
+		// client
+		require.True(t, t.Run("without static", func(t *testing.T) {
+			conn := startApp(t, fmt.Sprintf(dhcpfile, database, ""))
+			leaseAddress(t, conn, otherClient, "127.0.0.10")
+		}))
+
+		conn := startApp(t, fmt.Sprintf(dhcpfile, database, static))
+
+		// the other client may use the address until its lease ends, so the
+		// static client gets another one meanwhile
+		leaseAddress(t, conn, staticClient, "127.0.0.11")
+
+		// the other client's lease ends when its renewal is refused
+		renew, err := dhcpv4.New(
+			dhcpv4.WithHwAddr(otherClient),
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+			dhcpv4.WithClientIP(net.IP{127, 0, 0, 10}),
+		)
+		require.NoError(t, err)
+
+		nak := conn.exchange(t, renew)
+		assert.Equal(t, dhcpv4.MessageTypeNak, nak.MessageType())
+
+		// so the static client's renewal is refused too, and it gets its
+		// static address
+		renew, err = dhcpv4.New(
+			dhcpv4.WithHwAddr(staticClient),
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+			dhcpv4.WithClientIP(net.IP{127, 0, 0, 11}),
+		)
+		require.NoError(t, err)
+
+		nak = conn.exchange(t, renew)
+		assert.Equal(t, dhcpv4.MessageTypeNak, nak.MessageType())
+
+		leaseAddress(t, conn, staticClient, "127.0.0.10")
+
+		// and the address it had is free again
+		leaseAddress(t, conn, otherClient, "127.0.0.11")
+	})
+
 	t.Run("static client leased another address before", func(t *testing.T) {
 		database := "bolt " + filepath.Join(t.TempDir(), "leases.db")
 

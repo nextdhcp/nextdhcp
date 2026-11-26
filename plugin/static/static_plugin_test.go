@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -154,4 +156,72 @@ func TestStaticStoresLease(t *testing.T) {
 		assert.Equal(t, "00:aa:bb:cc:dd:ee", leases[0].ID)
 		assert.WithinDuration(t, time.Now().Add(leaseTime), leases[0].Expires, 5*time.Second)
 	}
+}
+
+// TestStaticAddressInUse checks that a client is served by the next handler
+// while its static address is still leased to another client, and gets its
+// static address once that lease ends.
+func TestStaticAddressInUse(t *testing.T) {
+	ctx := context.Background()
+	mac := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee}
+	other := lease.NewClient(net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xff})
+
+	// another client leased the address before it was configured
+	srv := test.NewServer(t)
+	_, err := srv.Database.Lease(ctx, net.IP{127, 0, 0, 50}, other, time.Hour, false)
+	require.NoError(t, err)
+
+	p := &Plugin{Addresses: map[string]net.IP{mac.String(): {127, 0, 0, 50}}}
+	require.NoError(t, p.Provision(dhcpserver.WithServer(test.NewContext(t), srv)))
+
+	nextCalled := 0
+	p.Wrap(test.HandlerFunc(func(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
+		nextCalled++
+		return nil
+	}))
+
+	serve := func(modifiers ...dhcpv4.Modifier) *dhcpv4.DHCPv4 {
+		t.Helper()
+
+		req, err := dhcpv4.NewDiscovery(mac, modifiers...)
+		require.NoError(t, err)
+		res, err := dhcpv4.NewReplyFromRequest(req)
+		require.NoError(t, err)
+		require.NoError(t, p.ServeDHCP(ctx, req, res))
+
+		return res
+	}
+
+	discover := []dhcpv4.Modifier{}
+	requestStatic := []dhcpv4.Modifier{
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+		dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(net.IP{127, 0, 0, 50})),
+	}
+	requestOther := []dhcpv4.Modifier{
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+		dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(net.IP{127, 0, 0, 100})),
+	}
+
+	for i, modifiers := range [][]dhcpv4.Modifier{discover, requestStatic, requestOther} {
+		res := serve(modifiers...)
+		assert.Equal(t, i+1, nextCalled)
+		assert.True(t, res.YourIPAddr == nil || res.YourIPAddr.IsUnspecified())
+	}
+
+	// the other client is refused the address, which ends its lease
+	_, err = srv.Database.Lease(ctx, net.IP{127, 0, 0, 50}, other, time.Hour, true)
+	assert.ErrorIs(t, err, lease.ErrAddressReserved)
+
+	// so the client gets its static address, and is refused another one
+	res := serve(discover...)
+	assert.Equal(t, "127.0.0.50", res.YourIPAddr.String())
+
+	res = serve(requestOther...)
+	assert.Equal(t, dhcpv4.MessageTypeNak, res.MessageType())
+
+	res = serve(requestStatic...)
+	assert.Equal(t, dhcpv4.MessageTypeAck, res.MessageType())
+	assert.Equal(t, "127.0.0.50", res.YourIPAddr.String())
+
+	assert.Equal(t, 3, nextCalled)
 }

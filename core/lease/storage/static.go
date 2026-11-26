@@ -104,49 +104,89 @@ func (s *staticReservations) list() []lease.ReservedAddress {
 	return reservations
 }
 
-// staticAddress handles a statically reserved IP address.
+// staticAddress handles a statically reserved IP address. Another client may
+// still use a lease of the address that hasn't expired, from before it was
+// reserved, so the address is only leased to its client once that lease
+// ends: when the other client asks for an address, which it is refused, or
+// when the lease expires.
 type staticAddress struct {
 	db *Database
 	r  lease.ReservedAddress // the reservation, with the 4 byte form of the address
 }
 
 // refuseOthers fails with lease.ErrAddressReserved if cli isn't the client
-// the address is reserved for.
+// the address is reserved for. Such a client doesn't use a lease of the
+// address anymore once it asks for an address and is refused, so its stored
+// lease or reservation of the address is removed, as a client has a single
+// one, and it would keep the client from getting another address.
 func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) error {
-	owner := idOf(a.r.Client)
-	if idOf(cli) == owner {
+	owner, id := idOf(a.r.Client), idOf(cli)
+	if id == owner {
 		return nil
 	}
 
 	l := dhcpLog.With(ctx, a.db.l)
 	l.Debugf("IP %s statically reserved for client %s", a.r.IP, owner)
 
-	// RemoveStaticConflicts removed the client's stored lease or reservation
-	// of the address, unless it failed
-	if err := a.removeConflict(ctx); err != nil {
+	switch err := a.db.store.Delete(ctx, a.r.IP, string(id)); {
+	case err == nil:
+		l.Infof("removed lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, id, owner)
+	case !IsNotFound(err) && !errors.Is(err, ErrClientMismatch):
 		l.Errorf("failed to remove lease or reservation of statically reserved IP %s: %s", a.r.IP, err.Error())
 	}
 
 	return lease.ErrAddressReserved
 }
 
+// prepare prepares the address for the client it's reserved for. It fails
+// with lease.ErrAddressReserved while another client has a lease of it that
+// hasn't expired, and removes other leases and reservations of other clients
+// of the address, which they don't use.
+func (a *staticAddress) prepare(ctx context.Context) error {
+	stored, leased, expiration, err := a.db.store.FindByIP(ctx, a.r.IP)
+	switch {
+	case IsNotFound(err):
+		return nil
+	case err != nil:
+		return err
+	}
+
+	existing, owner := clientID(stored), idOf(a.r.Client)
+	if existing == owner {
+		return nil
+	}
+
+	l := dhcpLog.With(ctx, a.db.l)
+	if leased && time.Now().Before(expiration) {
+		l.Debugf("static IP %s of client %s is leased to client %s until %s", a.r.IP, owner, existing, expiration)
+		return lease.ErrAddressReserved
+	}
+
+	l.Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
+
+	return a.db.deleteEntry(ctx, a.r.IP, existing)
+}
+
 func (a *staticAddress) reserve(ctx context.Context, cli lease.Client) error {
+	if err := a.refuseOthers(ctx, cli); err != nil {
+		return err
+	}
+
 	// static reservations don't expire, so the client needs no stored one
-	return a.refuseOthers(ctx, cli)
+	return a.prepare(ctx)
 }
 
 // leaseTo leases the address to the client it's reserved for, and stores
 // the lease like any other, so that the address stays leased to the client
 // until the lease expires if the static reservation is removed. A client
 // that leases its static address gave up any other address, so its lease or
-// reservation of another address is removed, as a client has a single one,
-// and so are conflicts with the static reservation.
+// reservation of another address is removed, as a client has a single one.
 func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
 	if err := a.refuseOthers(ctx, cli); err != nil {
 		return 0, err
 	}
 
-	if err := a.removeConflict(ctx); err != nil {
+	if err := a.prepare(ctx); err != nil {
 		return 0, err
 	}
 
@@ -170,23 +210,11 @@ func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 	return stored.leaseTo(ctx, cli, leaseTime, renew)
 }
 
-// release keeps the static reservation and the stored lease of its client,
-// and removes the leases and reservations of other clients that
-// RemoveStaticConflicts didn't remove, maybe because it failed.
+// release keeps the static reservation and the stored lease or reservation
+// of its client, and removes the lease or reservation of another client,
+// which gives the address up.
 func (a *staticAddress) release(ctx context.Context) error {
-	return a.removeConflict(ctx)
-}
-
-func (a *staticAddress) deleteReservation(context.Context, *lease.Client) error {
-	return lease.ErrStaticReservation
-}
-
-// removeConflict removes the stored lease or reservation of the address,
-// unless it's a lease of the client it's reserved for. Another client can't
-// renew its lease or reservation of the address, and as a client has a
-// single one, it would keep that client from getting another address.
-func (a *staticAddress) removeConflict(ctx context.Context) error {
-	stored, leased, _, err := a.db.store.FindByIP(ctx, a.r.IP)
+	stored, _, _, err := a.db.store.FindByIP(ctx, a.r.IP)
 	switch {
 	case IsNotFound(err):
 		return nil
@@ -195,13 +223,15 @@ func (a *staticAddress) removeConflict(ctx context.Context) error {
 	}
 
 	existing, owner := clientID(stored), idOf(a.r.Client)
-	if existing == owner && leased {
+	if existing == owner {
 		return nil
 	}
 
-	if existing != owner {
-		dhcpLog.With(ctx, a.db.l).Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
-	}
+	dhcpLog.With(ctx, a.db.l).Infof("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
 
 	return a.db.deleteEntry(ctx, a.r.IP, existing)
+}
+
+func (a *staticAddress) deleteReservation(context.Context, *lease.Client) error {
+	return lease.ErrStaticReservation
 }

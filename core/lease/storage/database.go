@@ -165,8 +165,9 @@ func (db *Database) ReserveStatic(ctx context.Context, r lease.ReservedAddress) 
 func (db *Database) RemoveStaticConflicts(ctx context.Context) error {
 	var errs []error
 	for _, r := range db.static.list() {
+		// a lease of another client that hasn't expired may still be in use
 		a := staticAddress{db: db, r: r}
-		if err := a.removeConflict(ctx); err != nil {
+		if err := a.prepare(ctx); err != nil && !errors.Is(err, lease.ErrAddressReserved) {
 			errs = append(errs, err)
 		}
 	}

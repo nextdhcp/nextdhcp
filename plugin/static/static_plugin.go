@@ -2,6 +2,7 @@ package static
 
 import (
 	"context"
+	"errors"
 	"net"
 	"time"
 
@@ -30,58 +31,82 @@ func (s *Plugin) Name() string {
 }
 
 // ServeDHCP serves a DHCP request and implements plugin.Handler. If the requesting MAC
-// address of the client is configured a static IP lease will be sent
+// address of the client is configured a static IP lease will be sent. While
+// another client still has a lease of the static IP address, from before it
+// was configured, the request is passed on to the next handler, so that the
+// client is served like any other until that lease ends.
 func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	static, hasStatic := s.Addresses[req.ClientHWAddr.String()]
-	if (dhcpserver.Discover(req) || dhcpserver.Request(req)) && hasStatic {
-		// Make sure to deny a DHCPREQUEST for a different IP address
-		// for DHCPDISCOVER we can safely ignore the RequestedIPAddress field by RFC
-		if dhcpserver.Request(req) {
-			reqIP := req.RequestedIPAddress()
-			if reqIP == nil || reqIP.IsUnspecified() {
-				reqIP = req.ClientIPAddr
-			}
-
-			if reqIP.String() != static.String() {
-				s.L.Warnf("%s: denying request for IP %s", req.ClientHWAddr.String(), reqIP)
-
-				res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
-				return nil
-			}
-
-			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
-			s.storeLease(ctx, req, res, static)
-		}
-
-		// TODO(ppacher): should we allow configuration of leaseTime or client specific options here?
-		res.YourIPAddr = static
-
-		// TODO(ppacher): we may remove this and make setting the subnet mask a default action of dhcpserver.Server
-		if req.IsOptionRequested(dhcpv4.OptionSubnetMask) {
-			res.UpdateOption(dhcpv4.OptSubnetMask(s.Config.Network.Mask))
-		}
-
-		s.L.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
-		return nil
+	if !hasStatic || !dhcpserver.Discover(req) && !dhcpserver.Request(req) {
+		return s.Next.ServeDHCP(ctx, req, res)
 	}
 
-	return s.Next.ServeDHCP(ctx, req, res)
-}
-
-// storeLease stores the lease of the static IP address ip for the client of
-// req, so that the address stays leased to the client until the lease
-// expires if ip is removed from the configuration, and tells the client the
-// lease time. Each request renews the lease, so the database lets it expire
-// when the client is told. If storing it fails, the client is still sent ip,
-// with the lease time configured.
-func (s *Plugin) storeLease(ctx context.Context, req, res *dhcpv4.DHCPv4, ip net.IP) {
+	l := log.With(ctx, s.L)
 	cli := lease.NewClient(req.ClientHWAddr)
 
-	leaseTime, err := s.Config.Database.Lease(ctx, ip, cli, res.IPAddressLeaseTime(time.Hour), true)
-	if err != nil {
-		log.With(ctx, s.L).Warnf("%s: failed to store the lease of static IP %s: %s", req.ClientHWAddr, ip, err.Error())
-		return
+	if dhcpserver.Request(req) {
+		reqIP := req.RequestedIPAddress()
+		if reqIP == nil || reqIP.IsUnspecified() {
+			reqIP = req.ClientIPAddr
+		}
+
+		// Deny a DHCPREQUEST for a different IP address, so that the client
+		// asks for its static address, unless that is still leased to
+		// another client. For DHCPDISCOVER we can safely ignore the
+		// RequestedIPAddress field by RFC
+		if reqIP.String() != static.String() {
+			if s.inUse(ctx, static, cli) {
+				return s.Next.ServeDHCP(ctx, req, res)
+			}
+
+			l.Warnf("%s: denying request for IP %s", req.ClientHWAddr.String(), reqIP)
+
+			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
+			return nil
+		}
+
+		// Store the lease, so that the address stays leased to the client
+		// until the lease expires if it is removed from the configuration.
+		// Each request renews the lease, so the database lets it expire when
+		// the client is told. If storing it fails, the client is still sent
+		// its address, with the lease time configured
+		leaseTime, err := s.Config.Database.Lease(ctx, static, cli, res.IPAddressLeaseTime(time.Hour), true)
+		switch {
+		case errors.Is(err, lease.ErrAddressReserved):
+			l.Infof("%s: static IP %s is still leased to another client", req.ClientHWAddr, static)
+			return s.Next.ServeDHCP(ctx, req, res)
+		case err != nil:
+			l.Warnf("%s: failed to store the lease of static IP %s: %s", req.ClientHWAddr, static, err.Error())
+		default:
+			res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
+		}
+
+		res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
+	} else if s.inUse(ctx, static, cli) {
+		l.Infof("%s: static IP %s is still leased to another client", req.ClientHWAddr, static)
+		return s.Next.ServeDHCP(ctx, req, res)
 	}
 
-	res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
+	// TODO(ppacher): should we allow configuration of leaseTime or client specific options here?
+	res.YourIPAddr = static
+
+	// TODO(ppacher): we may remove this and make setting the subnet mask a default action of dhcpserver.Server
+	if req.IsOptionRequested(dhcpv4.OptionSubnetMask) {
+		res.UpdateOption(dhcpv4.OptSubnetMask(s.Config.Network.Mask))
+	}
+
+	l.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
+	return nil
+}
+
+// inUse reports whether the static IP address ip of cli is still leased to
+// another client, which may use it until that lease ends. If the database
+// fails to tell, the client gets its address.
+func (s *Plugin) inUse(ctx context.Context, ip net.IP, cli lease.Client) bool {
+	err := s.Config.Database.Reserve(ctx, ip, cli)
+	if err != nil && !errors.Is(err, lease.ErrAddressReserved) {
+		log.With(ctx, s.L).Warnf("%s: failed to check whether static IP %s is leased to another client: %s", cli.HwAddr, ip, err.Error())
+	}
+
+	return errors.Is(err, lease.ErrAddressReserved)
 }
