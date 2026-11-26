@@ -82,9 +82,8 @@ func TestStaticPluginReservesAddresses(t *testing.T) {
 	assert.ErrorIs(t, db.Reserve(ctx, net.IP{127, 0, 0, 50}, other), lease.ErrAddressReserved)
 
 	// the plugin needs the database of the server
-	ip, ipNet, err := net.ParseCIDR(test.TestSubnet)
-	require.NoError(t, err)
-	srv := &dhcpserver.Server{Subnet: test.TestSubnet, IP: ip, Network: *ipNet}
+	srv := test.NewServer(t)
+	srv.Database = nil
 
 	p := &Plugin{Addresses: map[string]net.IP{"00:aa:bb:cc:dd:ee": {127, 0, 0, 50}}}
 	assert.Error(t, p.Provision(dhcpserver.WithServer(test.NewContext(t), srv)))

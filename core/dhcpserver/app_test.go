@@ -105,21 +105,11 @@ const servingDhcpfile = `
 // Dhcpfile, through a connection that doesn't need raw socket privileges.
 func TestServe(t *testing.T) {
 	conn := newFakeConn()
-	restore := dhcpserver.SetListenDHCP(func(_ log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
+	app := provisionApp(t, servingDhcpfile, func(_ log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
 		assert.Equal(t, "127.0.0.1", ip.String())
 		assert.Equal(t, "lo", ifc.Name)
 		return conn, nil
 	})
-	defer restore()
-
-	_, app, err := adapt(t, servingDhcpfile)
-	require.NoError(t, err)
-
-	ctx, cancel := caddy.NewContext(caddy.Context{Context: context.Background()})
-	defer cancel()
-
-	require.NoError(t, app.Provision(ctx))
-	defer func() { assert.NoError(t, app.Cleanup()) }()
 
 	require.NoError(t, app.Start())
 
@@ -357,17 +347,7 @@ func TestStaticAddressReserved(t *testing.T) {
 func TestStartFailure(t *testing.T) {
 	first := newFakeConn()
 	calls := 0
-	restore := dhcpserver.SetListenDHCP(func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
-		calls++
-		if calls == 1 {
-			return first, nil
-		}
-
-		return nil, assert.AnError
-	})
-	defer restore()
-
-	_, app, err := adapt(t, `
+	app := provisionApp(t, `
 127.0.0.1/8 {
 	database memory
 }
@@ -375,14 +355,14 @@ func TestStartFailure(t *testing.T) {
 lo {
 	database memory
 }
-`)
-	require.NoError(t, err)
+`, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+		calls++
+		if calls == 1 {
+			return first, nil
+		}
 
-	ctx, cancel := caddy.NewContext(caddy.Context{Context: context.Background()})
-	defer cancel()
-
-	require.NoError(t, app.Provision(ctx))
-	defer func() { assert.NoError(t, app.Cleanup()) }()
+		return nil, assert.AnError
+	})
 
 	assert.ErrorIs(t, app.Start(), assert.AnError)
 
