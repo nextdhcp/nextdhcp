@@ -144,7 +144,8 @@ func (p *RangePlugin) releaseOutsideRanges(ctx context.Context, mac net.Hardware
 	}
 
 	l := log.With(ctx, p.L)
-	if err := db.Release(ctx, duplicate.IP); err != nil {
+	cli := lease.NewClient(mac)
+	if err := db.Release(ctx, duplicate.IP, &cli); err != nil {
 		l.Errorf("%s: failed to release IP %s outside the ranges: %s", mac, duplicate.IP, err.Error())
 		return false
 	}
@@ -257,9 +258,10 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 		}
 	} else
 
-	// If it's a DHCPRELEASE message and part of our range we'll release it
+	// If it's a DHCPRELEASE message and part of our range we'll release it,
+	// if it's leased to the client
 	if dhcpserver.Release(req) && p.Ranges.Contains(req.ClientIPAddr) {
-		if err := db.Release(ctx, req.ClientIPAddr); err != nil {
+		if err := db.Release(ctx, req.ClientIPAddr, &cli); err != nil {
 			return err
 		}
 

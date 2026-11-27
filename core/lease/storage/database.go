@@ -114,7 +114,7 @@ func (db *Database) ReservedAddresses(ctx context.Context) (lease.ReservedAddres
 type addressHandler interface {
 	reserve(ctx context.Context, cli lease.Client) error
 	leaseTo(ctx context.Context, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error)
-	release(ctx context.Context) error
+	release(ctx context.Context, cli *lease.Client) error
 	deleteReservation(ctx context.Context, cli *lease.Client) error
 }
 
@@ -137,9 +137,17 @@ func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leas
 	return db.address(ip).leaseTo(ctx, cli, leaseTime, renew)
 }
 
-// Release implements lease.Database
-func (db *Database) Release(ctx context.Context, ip net.IP) error {
-	return db.address(ip).release(ctx)
+// Release implements lease.Database. Given a client, it fails with
+// ErrClientMismatch if the lease or reservation belongs to another client.
+func (db *Database) Release(ctx context.Context, ip net.IP, cli *lease.Client) error {
+	// Storages don't check whose entry they delete for an empty client ID,
+	// which a client without hardware address has, so such a client would
+	// release any address
+	if cli != nil && idOf(*cli) == "" {
+		return ErrClientMismatch
+	}
+
+	return db.address(ip).release(ctx, cli)
 }
 
 // DeleteReservation implements lease.Database
@@ -313,8 +321,14 @@ func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 	return leaseTime, nil
 }
 
-func (a *storedAddress) release(ctx context.Context) error {
-	return a.db.store.Delete(ctx, a.ip, "")
+func (a *storedAddress) release(ctx context.Context, cli *lease.Client) error {
+	// storages only delete the entry of the given client, if any
+	var id lease.ClientID
+	if cli != nil {
+		id = idOf(*cli)
+	}
+
+	return a.db.store.Delete(ctx, a.ip, id)
 }
 
 func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client) error {

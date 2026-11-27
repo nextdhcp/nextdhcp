@@ -59,8 +59,11 @@ type Database interface {
 
 	// Release releases a previous client IP address lease. If no
 	// such lease exists the list of reserved IP addresses is
-	// checked and any reservation for the client is removed
-	Release(context.Context, net.IP) error
+	// checked and any reservation for the client is removed. If a
+	// client is given, the lease or reservation is only released if
+	// it belongs to that client, so that clients can't release the
+	// addresses of other clients
+	Release(context.Context, net.IP, *Client) error
 
 	// DeleteReservation deletes a IP address reservation
 	DeleteReservation(context.Context, net.IP, *Client) error
@@ -87,7 +90,9 @@ type StaticReserver interface {
 	// made again whenever the database is opened. Release succeeds for
 	// a statically reserved IP address, removing other clients' stored
 	// leases and reservations of it but neither the static reservation
-	// nor its client's, DeleteReservation fails with
+	// nor its client's. Given a client, Release fails, like for any
+	// other address, if the stored lease or reservation belongs to
+	// another client. DeleteReservation fails with
 	// ErrStaticReservation, and ReservedAddresses returns static
 	// reservations without an expiration time. ReserveStatic fails if r
 	// has an expiration time, or if the IP address or the client

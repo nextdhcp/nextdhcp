@@ -723,6 +723,71 @@ func TestLeaseTimeOfKeptLease(t *testing.T) {
 	assert.Greater(t, ack.IPAddressLeaseTime(0), 59*time.Minute)
 }
 
+// release sends a RELEASE of client for ip, which the server doesn't respond
+// to.
+func (c *fakeConn) release(t *testing.T, client net.HardwareAddr, ip net.IP) {
+	t.Helper()
+
+	release, err := dhcpv4.New(
+		dhcpv4.WithHwAddr(client),
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRelease),
+		dhcpv4.WithClientIP(ip),
+	)
+	require.NoError(t, err)
+
+	select {
+	case c.requests <- packet{payload: release.ToBytes(), addr: &net.UDPAddr{IP: ip, Port: dhcpv4.ClientPort}}:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server didn't read the request")
+	}
+}
+
+// TestReleaseOwnLeaseOnly checks that a client can release its own lease, but
+// not the lease of another client, which would let the server lease the
+// address to a third client while the other client still uses it.
+func TestReleaseOwnLeaseOnly(t *testing.T) {
+	owner := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}
+	other := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x02}
+	ip := net.IP{127, 0, 0, 100}
+
+	for name, tc := range map[string]struct {
+		releasedBy net.HardwareAddr
+		released   bool
+	}{
+		"own lease":          {releasedBy: owner, released: true},
+		"other client lease": {releasedBy: other, released: false},
+		// a client can leave the hardware address out of its requests
+		"no hardware address": {releasedBy: net.HardwareAddr{}, released: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			conn := newFakeConn()
+			app := startAppWithConn(t, servingDhcpfile, conn)
+
+			conn.leaseAddress(t, owner, ip.String())
+			conn.release(t, tc.releasedBy, ip)
+
+			// Stop returns once the server served all requests it read
+			require.NoError(t, app.Stop())
+
+			leases, err := app.Servers[0].Database.Leases(context.Background())
+			require.NoError(t, err)
+
+			var holders []string
+			for _, l := range leases {
+				if l.Address.Equal(ip) {
+					holders = append(holders, string(l.ID))
+				}
+			}
+
+			if tc.released {
+				assert.Empty(t, holders)
+			} else {
+				assert.Equal(t, []string{owner.String()}, holders)
+			}
+		})
+	}
+}
+
 // TestServeFailure checks that the app reports a server that stops serving
 // because reading requests fails, but not a server that is stopped.
 func TestServeFailure(t *testing.T) {

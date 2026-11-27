@@ -40,8 +40,8 @@ func (m *MockDatabase) Reserve(_ context.Context, ip net.IP, cli lease.Client) e
 }
 
 // Release implements the lease.Database interface
-func (m *MockDatabase) Release(_ context.Context, ip net.IP) error {
-	return m.Called(ip).Error(0)
+func (m *MockDatabase) Release(_ context.Context, ip net.IP, cli *lease.Client) error {
+	return m.Called(ip, cli).Error(0)
 }
 
 // DeleteReservation implements the lease.Database interface

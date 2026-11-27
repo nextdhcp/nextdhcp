@@ -212,14 +212,20 @@ func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 
 // release keeps the static reservation and the stored lease or reservation
 // of its client, and removes the lease or reservation of another client,
-// which gives the address up.
-func (a *staticAddress) release(ctx context.Context) error {
+// which gives the address up. Given a client, it fails with
+// ErrClientMismatch if the stored lease or reservation belongs to another
+// client.
+func (a *staticAddress) release(ctx context.Context, cli *lease.Client) error {
 	existing, _, _, err := a.db.store.FindByIP(ctx, a.r.IP)
 	switch {
 	case IsNotFound(err):
 		return nil
 	case err != nil:
 		return err
+	}
+
+	if cli != nil && idOf(*cli) != existing {
+		return ErrClientMismatch
 	}
 
 	owner := idOf(a.r.Client)
