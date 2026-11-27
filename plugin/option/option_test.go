@@ -5,6 +5,7 @@ import (
 
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -85,4 +86,13 @@ func TestSetupPlugin(t *testing.T) {
 		}
 
 	}
+}
+
+// TestProvisionOptionWithoutValues checks that a JSON config with an option
+// that takes one value, but has none, fails to load instead of panicking.
+func TestProvisionOptionWithoutValues(t *testing.T) {
+	assert.NotPanics(t, func() {
+		_, err := test.Provision(t, &Plugin{OptionsRaw: []OptionConfig{{Name: "hostname"}}})
+		assert.Error(t, err)
+	})
 }
