@@ -47,6 +47,7 @@ const allDirectives = `
 		server http://127.0.0.1:1 some-token
 	}
 	interface lo
+	transport udp
 	database memory
 	log debug
 }
@@ -107,6 +108,7 @@ func TestAdaptAllDirectives(t *testing.T) {
 	srv := app.Servers[0]
 	assert.Equal(t, "127.0.0.1/8", srv.Subnet)
 	assert.Equal(t, "lo", srv.Interface)
+	assert.Equal(t, dhcpserver.TransportUDP, srv.Transport)
 	require.NotNil(t, srv.DatabaseConfig)
 	assert.Equal(t, "memory", srv.DatabaseConfig.Driver)
 
