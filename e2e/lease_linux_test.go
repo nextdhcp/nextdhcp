@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -156,6 +158,48 @@ func requireNetworkNamespaces(t *testing.T) {
 	}
 
 	_ = exec.Command("ip", "netns", "del", name).Run()
+
+	removeStaleNetworks(t)
+}
+
+// removeStaleNetworks removes the network namespaces that earlier runs left
+// behind because they died before their cleanups ran, for example when they
+// timed out, and kills what still runs in them. A namespace is stale if the
+// process in its name is gone, or is this one, which hasn't created any yet,
+// so an earlier process with the same PID created it.
+func removeStaleNetworks(t *testing.T) {
+	t.Helper()
+
+	out, err := exec.Command("ip", "netns", "list").Output()
+	if err != nil {
+		return
+	}
+
+	for _, line := range strings.Split(string(out), "\n") {
+		name, _, _ := strings.Cut(line, " ")
+
+		// nextdhcp-e2e-<role>-<pid>-<network>, or nextdhcp-e2e-check-<pid>
+		rest, ok := strings.CutPrefix(name, "nextdhcp-e2e-")
+		fields := strings.Split(rest, "-")
+		if !ok || len(fields) < 2 {
+			continue
+		}
+
+		pid, err := strconv.Atoi(fields[1])
+		if err != nil || (pid != os.Getpid() && syscall.Kill(pid, 0) == nil) {
+			continue
+		}
+
+		pids, _ := exec.Command("ip", "netns", "pids", name).Output()
+		for _, f := range strings.Fields(string(pids)) {
+			if p, err := strconv.Atoi(f); err == nil {
+				_ = syscall.Kill(p, syscall.SIGKILL)
+			}
+		}
+
+		_ = exec.Command("ip", "netns", "del", name).Run()
+		t.Logf("removed the network namespace %s, which an earlier run left behind", name)
+	}
 }
 
 // network is a pair of network namespaces: the server's, and the client's.
@@ -224,23 +268,23 @@ func startServer(t *testing.T, n network, dhcpfile string) {
 	cmd.Env = append(os.Environ(), roleEnv+"=server", dhcpfileEnv+"="+conf)
 	cmd.Stderr = logs
 
+	// Kill the server if the test binary dies before its cleanups run, for
+	// example when it times out. ip execs the server, which keeps the signal.
+	// The kernel sends it when the thread that started the server exits,
+	// which Go only does for a thread a goroutine locked, as none does here.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+
 	stdout, err := cmd.StdoutPipe()
 	require.NoError(t, err)
 	require.NoError(t, cmd.Start())
 
-	t.Cleanup(func() {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-
-		if t.Failed() {
-			out, _ := os.ReadFile(logs.Name())
-			t.Logf("server logs:\n%s", out)
-		}
-	})
-
-	// NextDHCP prints the subnets it serves once it serves them
+	// NextDHCP prints the subnets it serves once it serves them. done is
+	// closed once its output ends, for example because it exited.
 	ready := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
+
 		s := bufio.NewScanner(stdout)
 		var once sync.Once
 		for s.Scan() {
@@ -250,8 +294,21 @@ func startServer(t *testing.T, n network, dhcpfile string) {
 		}
 	}()
 
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		<-done // Wait closes the pipe, so read it to its end first
+		_ = cmd.Wait()
+
+		if t.Failed() {
+			out, _ := os.ReadFile(logs.Name())
+			t.Logf("server logs:\n%s", out)
+		}
+	})
+
 	select {
 	case <-ready:
+	case <-done:
+		t.Fatal("the server exited before it served")
 	case <-time.After(10 * time.Second):
 		t.Fatal("the server didn't start serving within 10s")
 	}
