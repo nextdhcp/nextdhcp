@@ -1,11 +1,12 @@
 package socket
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"sync"
-	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -48,6 +49,10 @@ var (
 	// listInterfaces lists the network interfaces. Tests replace it.
 	listInterfaces = net.Interfaces
 
+	// interfaceByIP returns the network interface that has the address ip.
+	// Tests replace it so they can serve addresses the host doesn't have.
+	interfaceByIP = interfaces.ByIP
+
 	// interfaceCheckInterval is how often a UDP listener checks that the
 	// interfaces of its connections still exist.
 	interfaceCheckInterval = 5 * time.Second
@@ -78,19 +83,26 @@ var (
 // yet, so servers broadcast the replies that they send that way through the
 // connections of ListenDHCP, which RFC 2131 allows. Reading from a connection
 // fails once its interface goes away.
+//
+// Like binding a socket to ip, ListenUDP fails if ip isn't an address of this
+// host, or if another connection already serves ip.
 func ListenUDP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, error) {
 	ip4 := ip.To4()
 	if ip4 == nil {
 		return nil, fmt.Errorf("the UDP transport serves IPv4 addresses, not %s", ip)
 	}
 
-	// If no interface is provided, look up the one that has ip
+	// The shared socket isn't bound to ip, so check, as binding a socket to
+	// ip would, that ip is an address of this host. It may be assigned to
+	// another interface than iface.
+	ifc, err := interfaceByIP(ip4)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not an address of this host: %w", ip4, err)
+	}
+
+	// If no interface is provided, use the one that has ip
 	if iface == nil {
-		var err error
-		iface, err = interfaces.ByIP(ip4)
-		if err != nil {
-			return nil, err
-		}
+		iface = ifc
 	}
 
 	udpMu.Lock()
@@ -105,15 +117,24 @@ func ListenUDP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, e
 		udpShared = newUDPListener(sock)
 	}
 
+	// As binding a second socket to ip would, refuse a second connection for
+	// ip: its server would answer the requests of the other one
+	for other := range udpShared.conns {
+		if other.ip.Equal(ip4) {
+			return nil, fmt.Errorf("another server already serves %s: %w", ip4, syscall.EADDRINUSE)
+		}
+	}
+
 	c := &udpConn{
-		listener:     udpShared,
-		ip:           ip4,
-		iface:        *iface,
-		l:            l,
-		in:           make(chan udpPacket, udpQueueLen),
-		closed:       make(chan struct{}),
-		failed:       make(chan struct{}),
-		readDeadline: makeDeadline(),
+		listener:      udpShared,
+		ip:            ip4,
+		iface:         *iface,
+		l:             l,
+		in:            make(chan udpPacket, udpQueueLen),
+		closed:        make(chan struct{}),
+		failed:        make(chan struct{}),
+		readDeadline:  makeDeadline(),
+		writeDeadline: makeDeadline(),
 	}
 	udpShared.conns[c] = struct{}{}
 
@@ -230,15 +251,24 @@ func (l *udpListener) watchInterfaces(list func() ([]net.Interface, error), inte
 		case <-t.C:
 		}
 
-		ifaces, err := list()
+		exist, err := interfaceIndexes(list)
 		if err != nil {
 			// try again next time
 			continue
 		}
 
-		exist := make(map[int]bool, len(ifaces))
-		for _, ifc := range ifaces {
-			exist[ifc.Index] = true
+		// The kernel doesn't list the interfaces atomically: before Linux
+		// 6.9, a listing can skip one that exists while others come and go.
+		// So only give up on the interfaces that a second listing lacks too.
+		if l.lacksInterface(exist) {
+			again, err := interfaceIndexes(list)
+			if err != nil {
+				continue
+			}
+
+			for index := range again {
+				exist[index] = true
+			}
 		}
 
 		udpMu.Lock()
@@ -249,6 +279,37 @@ func (l *udpListener) watchInterfaces(list func() ([]net.Interface, error), inte
 		}
 		udpMu.Unlock()
 	}
+}
+
+// interfaceIndexes returns the indexes of the network interfaces that list
+// returns.
+func interfaceIndexes(list func() ([]net.Interface, error)) (map[int]bool, error) {
+	ifaces, err := list()
+	if err != nil {
+		return nil, err
+	}
+
+	exist := make(map[int]bool, len(ifaces))
+	for _, ifc := range ifaces {
+		exist[ifc.Index] = true
+	}
+
+	return exist, nil
+}
+
+// lacksInterface reports whether the interface of a connection isn't one of
+// the interfaces with the indexes in exist.
+func (l *udpListener) lacksInterface(exist map[int]bool) bool {
+	udpMu.Lock()
+	defer udpMu.Unlock()
+
+	for c := range l.conns {
+		if !exist[c.iface.Index] {
+			return true
+		}
+	}
+
+	return false
 }
 
 // fail makes reading from all connections fail with err, which reading from
@@ -325,7 +386,7 @@ type udpConn struct {
 	failErr  error         // why it failed, set before failed is closed
 
 	readDeadline  connDeadline
-	writeDeadline atomic.Int64 // in Unix nanoseconds, or 0 if there is none
+	writeDeadline connDeadline
 }
 
 // deliver passes p on to the server, unless too many requests are waiting
@@ -397,7 +458,7 @@ func (c *udpConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		return 0, c.opError("write", addr, err)
 	}
 
-	if d := c.writeDeadline.Load(); d != 0 && time.Now().UnixNano() >= d {
+	if isClosed(c.writeDeadline.wait()) {
 		return 0, c.opError("write", addr, os.ErrDeadlineExceeded)
 	}
 
@@ -407,16 +468,31 @@ func (c *udpConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 
 	// The socket isn't bound to the server's address, so set the source of
-	// the reply. The kernel doesn't route a limited broadcast by its
-	// destination, so also send it through the server's interface.
+	// the reply. Send replies to clients, on the client port, through the
+	// server's interface, like the connections of ListenDHCP do: the kernel
+	// doesn't route a limited broadcast by its destination, and the server's
+	// address may be on another interface, whose routes don't lead to the
+	// clients. Replies to relay agents, on the server port, are routed.
 	cm := &ipv4.ControlMessage{Src: c.ip}
-	if dst.IP.Equal(net.IPv4bcast) {
+	if dst.IP.Equal(net.IPv4bcast) || dst.Port == dhcpv4.ClientPort {
 		cm.IfIndex = c.iface.Index
 	}
 
 	c.l.Debugf("[socket] sending UDP response %s -> %s (%s)", c.ip, dst, c.iface.Name)
 
-	return c.listener.sock.WriteTo(b, cm, dst)
+	n, err := c.listener.sock.WriteTo(b, cm, dst)
+	if err != nil {
+		// Name the server's address, which the reply is sent from, instead of
+		// the shared socket's
+		var opErr *net.OpError
+		if errors.As(err, &opErr) {
+			err = opErr.Err
+		}
+
+		return n, c.opError("write", dst, err)
+	}
+
+	return n, nil
 }
 
 // Close closes c. It closes the shared socket if no other connection uses
@@ -460,12 +536,7 @@ func (c *udpConn) SetReadDeadline(t time.Time) error {
 // SetWriteDeadline implements net.PacketConn. Writing to a UDP socket
 // doesn't wait, so WriteTo only checks whether the deadline has passed.
 func (c *udpConn) SetWriteDeadline(t time.Time) error {
-	var d int64
-	if !t.IsZero() {
-		d = t.UnixNano()
-	}
-
-	c.writeDeadline.Store(d)
+	c.writeDeadline.set(t)
 	return nil
 }
 

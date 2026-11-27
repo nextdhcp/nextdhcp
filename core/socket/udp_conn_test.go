@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"slices"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -43,8 +45,9 @@ type fakeUDPSocket struct {
 	closeOnce sync.Once
 	closed    chan struct{}
 
-	mu     sync.Mutex
-	writes []udpWrite
+	mu       sync.Mutex
+	writes   []udpWrite
+	writeErr error // what writes fail with, if set
 }
 
 func newFakeUDPSocket() *fakeUDPSocket {
@@ -63,6 +66,10 @@ func (s *fakeUDPSocket) ReadFrom(b []byte) (int, *ipv4.ControlMessage, net.Addr,
 func (s *fakeUDPSocket) WriteTo(b []byte, cm *ipv4.ControlMessage, dst net.Addr) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.writeErr != nil {
+		return 0, s.writeErr
+	}
 
 	s.writes = append(s.writes, udpWrite{payload: append([]byte(nil), b...), cm: cm, dst: dst})
 
@@ -89,10 +96,23 @@ func (s *fakeUDPSocket) written() []udpWrite {
 	return append([]udpWrite(nil), s.writes...)
 }
 
-// stubUDPListen makes ListenUDP open fake sockets, and returns the sockets
-// it opened. It checks that the test closed all connections.
+// stubInterfaceByIP makes ListenUDP find that the host has every address, on
+// eth0, until the test ends.
+func stubInterfaceByIP(t *testing.T) {
+	t.Helper()
+
+	orig := interfaceByIP
+	interfaceByIP = func(net.IP) (*net.Interface, error) { return eth0, nil }
+	t.Cleanup(func() { interfaceByIP = orig })
+}
+
+// stubUDPListen makes ListenUDP open fake sockets and find that the host has
+// every address, and returns the sockets it opened. It checks that the test
+// closed all connections.
 func stubUDPListen(t *testing.T) *[]*fakeUDPSocket {
 	t.Helper()
+
+	stubInterfaceByIP(t)
 
 	orig := udpListen
 	var opened []*fakeUDPSocket
@@ -249,11 +269,17 @@ func TestListenUDPWriteTo(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 3, n)
 
-	// Replies come from the server's address, and broadcasts leave through
-	// its interface
+	relay := &net.UDPAddr{IP: net.IPv4(10, 1, 0, 1), Port: 67}
+	n, err = conn.WriteTo([]byte("relayed"), relay)
+	require.NoError(t, err)
+	assert.Equal(t, 7, n)
+
+	// Replies come from the server's address. Replies to clients leave
+	// through its interface, and replies to relay agents are routed.
 	assert.Equal(t, []udpWrite{
 		{payload: []byte("offer"), cm: &ipv4.ControlMessage{Src: net.IP{10, 0, 0, 1}, IfIndex: eth0.Index}, dst: broadcast},
-		{payload: []byte("ack"), cm: &ipv4.ControlMessage{Src: net.IP{10, 0, 0, 1}}, dst: client},
+		{payload: []byte("ack"), cm: &ipv4.ControlMessage{Src: net.IP{10, 0, 0, 1}, IfIndex: eth0.Index}, dst: client},
+		{payload: []byte("relayed"), cm: &ipv4.ControlMessage{Src: net.IP{10, 0, 0, 1}}, dst: relay},
 	}, sock.written())
 
 	for _, addr := range []net.Addr{
@@ -264,7 +290,24 @@ func TestListenUDPWriteTo(t *testing.T) {
 		assert.Error(t, err, "%s", addr)
 	}
 
-	assert.Len(t, sock.written(), 2)
+	assert.Len(t, sock.written(), 3)
+}
+
+// TestListenUDPWriteToError checks that a failed write names the server's
+// address, not the shared socket's.
+func TestListenUDPWriteToError(t *testing.T) {
+	opened := stubUDPListen(t)
+	conn := listenUDP(t, "10.0.0.1", eth0)
+	sock := (*opened)[0]
+
+	broadcast := &net.UDPAddr{IP: net.IPv4bcast, Port: 68}
+	sock.mu.Lock()
+	sock.writeErr = &net.OpError{Op: "write", Net: "udp", Source: sock.LocalAddr(), Addr: broadcast, Err: os.NewSyscallError("sendmsg", syscall.ENETUNREACH)}
+	sock.mu.Unlock()
+
+	_, err := conn.WriteTo([]byte("offer"), broadcast)
+	assert.EqualError(t, err, "write udp4 10.0.0.1:67->255.255.255.255:68: sendmsg: network is unreachable")
+	assert.ErrorIs(t, err, syscall.ENETUNREACH)
 }
 
 func TestListenUDPSharesSocket(t *testing.T) {
@@ -338,7 +381,12 @@ func TestListenUDPReadFailure(t *testing.T) {
 		assert.False(t, netErr.Timeout())
 	}
 
-	assert.True(t, sock.isClosed())
+	// The listener closes the socket after it failed the connections
+	select {
+	case <-sock.closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the shared socket wasn't closed within 5s after reading from it failed")
+	}
 
 	// New connections open a new socket, while the failed ones are still
 	// open
@@ -373,6 +421,34 @@ func TestListenUDPInterfaceGone(t *testing.T) {
 	payload, _ := requireRead(t, b)
 	assert.Equal(t, []byte("request"), payload)
 	assert.False(t, (*opened)[0].isClosed())
+}
+
+// TestListenUDPIncompleteInterfaceListing checks that reading doesn't fail
+// when one listing of the interfaces misses the interface of a connection,
+// as listings can while other interfaces come and go.
+func TestListenUDPIncompleteInterfaceListing(t *testing.T) {
+	origList, origInterval := listInterfaces, interfaceCheckInterval
+	t.Cleanup(func() { listInterfaces, interfaceCheckInterval = origList, origInterval })
+
+	// Every other listing misses eth0
+	var listings atomic.Int32
+	listInterfaces = func() ([]net.Interface, error) {
+		if listings.Add(1)%2 == 1 {
+			return []net.Interface{*eth1}, nil
+		}
+
+		return []net.Interface{*eth0, *eth1}, nil
+	}
+	interfaceCheckInterval = time.Millisecond
+
+	stubUDPListen(t)
+	conn := listenUDP(t, "10.0.0.1", eth0)
+
+	require.Eventually(t, func() bool { return listings.Load() >= 20 }, 5*time.Second, time.Millisecond)
+
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(10*time.Millisecond)))
+	_, _, err := conn.ReadFrom(make([]byte, 1500))
+	assert.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }
 
 func TestListenUDPDeadlines(t *testing.T) {
@@ -413,6 +489,16 @@ func TestListenUDPDeadlines(t *testing.T) {
 	_, err = conn.WriteTo([]byte("offer"), broadcast)
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
+	// The start of Unix time, which passed
+	require.NoError(t, conn.SetWriteDeadline(time.Unix(0, 0)))
+	_, err = conn.WriteTo([]byte("offer"), broadcast)
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+
+	// A deadline further in the future than Unix nanoseconds reach
+	require.NoError(t, conn.SetWriteDeadline(time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)))
+	_, err = conn.WriteTo([]byte("offer"), broadcast)
+	require.NoError(t, err)
+
 	require.NoError(t, conn.SetDeadline(time.Time{}))
 	_, err = conn.WriteTo([]byte("offer"), broadcast)
 	require.NoError(t, err)
@@ -427,7 +513,33 @@ func TestListenUDPErrors(t *testing.T) {
 		assert.Empty(t, *opened)
 	})
 
+	t.Run("not an address of this host", func(t *testing.T) {
+		opened := stubUDPListen(t)
+
+		lookupErr := errors.New("failed to find interface for 10.0.0.9")
+		interfaceByIP = func(net.IP) (*net.Interface, error) { return nil, lookupErr }
+
+		_, err := ListenUDP(nopLogger{}, net.ParseIP("10.0.0.9"), eth0)
+		assert.ErrorIs(t, err, lookupErr)
+		assert.Empty(t, *opened)
+	})
+
+	t.Run("address in use", func(t *testing.T) {
+		opened := stubUDPListen(t)
+		listenUDP(t, "10.0.0.1", eth0)
+
+		// even on another interface, like binding a second socket to it
+		_, err := ListenUDP(nopLogger{}, net.ParseIP("10.0.0.1"), eth1)
+		assert.ErrorIs(t, err, syscall.EADDRINUSE)
+		assert.Len(t, *opened, 1)
+
+		// Other addresses can still be served
+		listenUDP(t, "10.0.1.1", eth1)
+	})
+
 	t.Run("listen error", func(t *testing.T) {
+		stubInterfaceByIP(t)
+
 		orig := udpListen
 		t.Cleanup(func() { udpListen = orig })
 
