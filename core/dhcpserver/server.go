@@ -451,6 +451,12 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Server, 
 		}
 
 		if req.GatewayIPAddr == nil || req.GatewayIPAddr.IsUnspecified() {
+			if Nak(resp) {
+				a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
+				l.Debugf("broadcasting to %s (%s) (NAK)", a.RawAddr.IP, a.RawAddr.MAC)
+				return addr
+			}
+
 			if req.ClientIPAddr != nil && !req.ClientIPAddr.IsUnspecified() {
 				if Offer(resp) || Ack(resp) {
 					a.RawAddr.IP = req.ClientIPAddr
@@ -468,12 +474,6 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Server, 
 					l.Debugf("unicasting to yiaddr %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
 				}
 
-				return addr
-			}
-
-			if Nak(resp) {
-				a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
-				l.Debugf("broadcasting to %s (%s) (NAK)", a.RawAddr.IP, a.RawAddr.MAC)
 				return addr
 			}
 

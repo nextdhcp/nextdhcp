@@ -6,10 +6,43 @@ import (
 	"testing"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/socket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+// TestRawNakAddr checks that servers broadcast all NAKs through connections
+// that read requests from *socket.Addr peers, like those of the packet
+// transport, as RFC 2131 says, also to clients without an address that don't
+// ask for broadcasts.
+func TestRawNakAddr(t *testing.T) {
+	srv := &Server{logger: zap.NewNop().Sugar(), IP: net.IPv4(10, 0, 0, 1)}
+	mac := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee}
+
+	for name, modifiers := range map[string][]dhcpv4.Modifier{
+		"client without an address":       {},
+		"client that asks for broadcasts": {dhcpv4.WithBroadcast(true)},
+		"renewing client":                 {dhcpv4.WithClientIP(net.IPv4(10, 0, 0, 100))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			req, err := dhcpv4.New(append([]dhcpv4.Modifier{dhcpv4.WithHwAddr(mac), dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest)}, modifiers...)...)
+			require.NoError(t, err)
+
+			resp, err := dhcpv4.NewReplyFromRequest(req, dhcpv4.WithMessageType(dhcpv4.MessageTypeNak))
+			require.NoError(t, err)
+
+			peer := &socket.Addr{
+				RawAddr: socket.RawAddr{MAC: mac, IP: req.ClientIPAddr},
+				Local:   socket.RawAddr{IP: net.IPv4bcast},
+			}
+
+			got, ok := updateConnectionAddresses(context.Background(), peer, srv, req, resp).(*socket.Addr)
+			require.True(t, ok)
+			assert.Equal(t, "255.255.255.255", got.RawAddr.IP.String())
+		})
+	}
+}
 
 // TestUDPReplyAddr checks where servers send replies through connections
 // that read requests from UDP addresses, like those of the udp transport,
