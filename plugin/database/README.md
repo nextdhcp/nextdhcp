@@ -65,7 +65,8 @@ The *bolt* driver migrates database files of NextDHCP versions with an older sch
 ```
 
 There's also the built-in *memory* database driver. Note that this driver does not
-persist leases in any way so a restart of NextDHCP will discard all active leases.
+persist leases in any way so a restart of NextDHCP, or a reload of its Dhcpfile, will
+discard all active leases.
 
 **Use with care**
 

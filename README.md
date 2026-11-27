@@ -69,6 +69,14 @@ Place your configuration into a file called `Dhcpfile` and start NextDHCP as roo
 sudo ./nextdhcp
 ```
 
+To apply changes to the Dhcpfile, send NextDHCP the `SIGUSR1` signal, or reload it with systemd if it runs with the [systemd unit](./contrib/systemd/nextdhcp.service):
+
+```sh
+sudo systemctl reload nextdhcp
+```
+
+NextDHCP then stops serving and starts again with the new configuration, so the leases of the `memory` database driver are lost. If the Dhcpfile has an error, the running configuration keeps running, and if the new configuration fails to start, the previous one starts again. A Dhcpfile read from standard input can't be reloaded.
+
 ## Plugins
 
 - [**log**](./plugin/log) - configure log output and level

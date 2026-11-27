@@ -1,10 +1,13 @@
 package dhcpmain
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,7 +29,12 @@ func Run() {
 
 	// Caddy's logger also logs what the standard library's logger does, but
 	// at the info level, so log errors with it directly
-	cfgJSON, err := loadConfig()
+	filename, body, err := readDhcpfile()
+	if err != nil {
+		caddy.Log().Fatal(err.Error())
+	}
+
+	cfgJSON, err := adapt(filename, body)
 	if err != nil {
 		caddy.Log().Fatal(err.Error())
 	}
@@ -35,15 +43,18 @@ func Run() {
 		caddy.Log().Fatal(err.Error())
 	}
 
-	app, err := caddy.ActiveContext().AppIfConfigured("dhcp")
-	if err != nil {
-		caddy.Log().Fatal(err.Error())
+	r := newReloader(cfgJSON)
+
+	// SIGUSR1 reloads the Dhcpfile (see caddy.TrapSignals), unless it was
+	// read from standard input, which can't be read again
+	if filename != os.Stdin.Name() {
+		caddy.SetLastConfig(filename, "dhcpfile", r.reload)
 	}
 
 	// The process exits once a signal stops it (see caddy.TrapSignals), or
 	// with an error once a server stops serving, so that a service manager
 	// can restart it
-	err = <-app.(*dhcpserver.App).Failed()
+	err = r.wait()
 
 	// Caddy exits with status 0 on SIGINT and SIGTERM, so keep a signal from
 	// starting that exit while this one stops NextDHCP. A signal that arrived
@@ -55,7 +66,7 @@ func Run() {
 		select {}
 	}
 
-	caddy.Log().Error("exiting because a server stopped serving", zap.Error(err))
+	caddy.Log().Error("exiting because NextDHCP stopped serving", zap.Error(err))
 	if err := caddy.Stop(); err != nil {
 		caddy.Log().Error("failed to stop", zap.Error(err))
 	}
@@ -63,13 +74,9 @@ func Run() {
 	os.Exit(1)
 }
 
-// loadConfig reads the Dhcpfile and adapts it to a Caddy JSON config.
-func loadConfig() ([]byte, error) {
-	filename, body, err := readDhcpfile()
-	if err != nil {
-		return nil, err
-	}
-
+// adapt adapts the Dhcpfile body, read from filename, to a Caddy JSON
+// config.
+func adapt(filename string, body []byte) ([]byte, error) {
 	cfgJSON, warnings, err := dhcpserver.Adapter{}.Adapt(body, map[string]any{
 		"filename": filename,
 	})
@@ -99,4 +106,130 @@ func readDhcpfile() (string, []byte, error) {
 	body, err := os.ReadFile(conf)
 
 	return conf, body, err
+}
+
+// failer is the part of the dhcp app that Run watches.
+type failer interface {
+	Failed() <-chan error
+}
+
+// reloader replaces the running configuration with the one of the Dhcpfile
+// when NextDHCP gets SIGUSR1, and tells Run which dhcp app to watch.
+type reloader struct {
+	mu      sync.Mutex // held while the running configuration is replaced
+	running []byte     // the JSON config that runs
+
+	reloaded chan struct{} // gets a value once a reload loaded a configuration
+	failed   chan error    // gets the error of a reload that left none running
+
+	// stop stops the running configuration, load loads one and app returns
+	// the dhcp app of the running one. Tests replace them.
+	stop func() error
+	load func(cfgJSON []byte, forceReload bool) error
+	app  func() (failer, error)
+}
+
+// newReloader returns a reloader of the running JSON config.
+func newReloader(running []byte) *reloader {
+	return &reloader{
+		running:  running,
+		reloaded: make(chan struct{}, 1),
+		failed:   make(chan error, 1),
+		stop:     caddy.Stop,
+		load:     caddy.Load,
+		app:      runningApp,
+	}
+}
+
+// runningApp returns the dhcp app of the running configuration.
+func runningApp() (failer, error) {
+	app, err := caddy.ActiveContext().AppIfConfigured("dhcp")
+	if err != nil {
+		return nil, err
+	}
+
+	return app.(*dhcpserver.App), nil
+}
+
+// reload replaces the running configuration with the one of the Dhcpfile
+// file, for SIGUSR1. Caddy starts a new configuration before it stops the
+// running one, which fails here, as the servers of the running configuration
+// hold the sockets and lease database files that the new ones open. So the
+// running configuration is stopped first, once the Dhcpfile was adapted, and
+// it is loaded again if the new one fails to load. If that fails too, no
+// configuration runs, and Run exits.
+func (r *reloader) reload(file, _ string) error {
+	body, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	cfgJSON, err := adapt(file, body)
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err := r.stop(); err != nil {
+		return err
+	}
+
+	if err := r.load(cfgJSON, true); err != nil {
+		if rollbackErr := r.load(r.running, true); rollbackErr != nil {
+			err = fmt.Errorf("failed to load %s, and to load the previous configuration again: %w", file, errors.Join(err, rollbackErr))
+			notify(r.failed, err)
+
+			return err
+		}
+
+		notify(r.reloaded, struct{}{})
+
+		return fmt.Errorf("failed to load %s, so the previous configuration runs again: %w", file, err)
+	}
+
+	r.running = cfgJSON
+	notify(r.reloaded, struct{}{})
+
+	return nil
+}
+
+// notify sends v to ch unless ch is full: reload runs on the goroutine that
+// handles signals, which it must not block, for example for SIGTERM.
+func notify[T any](ch chan<- T, v T) {
+	select {
+	case ch <- v:
+	default:
+	}
+}
+
+// wait returns the error that stops NextDHCP: the error of a server that
+// stopped serving, or of a reload that left no configuration running. After
+// a reload, it watches the dhcp app of the configuration that runs then.
+func (r *reloader) wait() error {
+	for {
+		// a reload replaces the running app while it holds mu
+		r.mu.Lock()
+		app, err := r.app()
+		r.mu.Unlock()
+
+		if err != nil {
+			// a reload that failed may have left no app running
+			select {
+			case reloadErr := <-r.failed:
+				return reloadErr
+			default:
+				return err
+			}
+		}
+
+		select {
+		case err := <-app.Failed():
+			return err
+		case err := <-r.failed:
+			return err
+		case <-r.reloaded:
+		}
+	}
 }
