@@ -99,6 +99,11 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 		}
 		l.Warnf("%s requested previous IP address %s but we failed to reserve it: %s", mac, requested, err.Error())
 
+		// no address can be reserved for a client without hardware address
+		if errors.Is(err, lease.ErrNoHardwareAddress) {
+			return nil
+		}
+
 		// TODO(ppacher): should we check for context errors here?
 	}
 
@@ -114,8 +119,10 @@ func (p *RangePlugin) findUnboundAddr(ctx context.Context, mac net.HardwareAddr,
 			}
 
 			if err != nil {
-				// failed to reserve the IP address
-				if err == context.DeadlineExceeded || err == context.Canceled {
+				// failed to reserve the IP address. No other address can
+				// be reserved after a context error, or for a client
+				// without hardware address
+				if err == context.DeadlineExceeded || err == context.Canceled || errors.Is(err, lease.ErrNoHardwareAddress) {
 					return nil
 				}
 

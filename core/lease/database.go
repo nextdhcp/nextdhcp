@@ -23,6 +23,10 @@ var (
 	// ErrStaticReservation indicates that the IP address is statically
 	// reserved, which only the configuration can change
 	ErrStaticReservation = errors.New("IP is statically reserved")
+
+	// ErrNoHardwareAddress indicates that the client has no hardware
+	// address, which lease databases identify clients by
+	ErrNoHardwareAddress = errors.New("client has no hardware address")
 )
 
 // Database describes a lease database interface

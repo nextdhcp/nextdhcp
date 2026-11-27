@@ -516,9 +516,8 @@ func TestReleaseOfClient(t *testing.T) {
 
 		// other clients, and clients without hardware address, whose
 		// client ID is empty, don't release them
-		for _, cli := range []lease.Client{client2, {}} {
-			assert.ErrorIs(t, db.Release(ctx, leasedIP, &cli), storage.ErrClientMismatch)
-		}
+		assert.ErrorIs(t, db.Release(ctx, leasedIP, &client2), storage.ErrClientMismatch)
+		assert.ErrorIs(t, db.Release(ctx, leasedIP, &lease.Client{}), lease.ErrNoHardwareAddress)
 		assert.ErrorIs(t, db.Release(ctx, reservedIP, &client1), storage.ErrClientMismatch)
 		assert.Equal(t, lease.HardwareAddrID(client1.HwAddr), owner(leasedIP))
 		assert.Equal(t, lease.HardwareAddrID(client2.HwAddr), owner(reservedIP))
@@ -568,9 +567,10 @@ func TestReleaseStaticOfClient(t *testing.T) {
 
 		// neither the client the address is reserved for nor any other
 		// client releases that lease
-		for _, cli := range []lease.Client{staticClient, third, {}} {
+		for _, cli := range []lease.Client{staticClient, third} {
 			assert.ErrorIs(t, db.Release(ctx, staticIP, &cli), storage.ErrClientMismatch)
 		}
+		assert.ErrorIs(t, db.Release(ctx, staticIP, &lease.Client{}), lease.ErrNoHardwareAddress)
 		assert.Equal(t, lease.HardwareAddrID(other.HwAddr), owner())
 
 		// its own client does
@@ -612,9 +612,9 @@ func TestStaticRefusalWithoutHardwareAddress(t *testing.T) {
 				require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
 
 				noHwAddr := lease.Client{}
-				assert.ErrorIs(t, db.Reserve(ctx, staticIP, noHwAddr), lease.ErrAddressReserved)
+				assert.ErrorIs(t, db.Reserve(ctx, staticIP, noHwAddr), lease.ErrNoHardwareAddress)
 				_, err := db.Lease(ctx, staticIP, noHwAddr, time.Hour, false)
-				assert.ErrorIs(t, err, lease.ErrAddressReserved)
+				assert.ErrorIs(t, err, lease.ErrNoHardwareAddress)
 
 				id, leased, _, err := store.FindByIP(ctx, staticIP)
 				require.NoError(t, err)
@@ -623,4 +623,37 @@ func TestStaticRefusalWithoutHardwareAddress(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestClientWithoutHardwareAddress checks that the database refuses clients
+// without hardware address, which it identifies clients by: they would all
+// share one lease, and could remove the entries of other clients.
+func TestClientWithoutHardwareAddress(t *testing.T) {
+	ctx := context.Background()
+	ip := net.IP{10, 0, 0, 1}
+	noHwAddr := lease.Client{Hostname: "unknown"}
+	client := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		db := storage.NewDatabase(store)
+
+		assert.ErrorIs(t, db.Reserve(ctx, ip, noHwAddr), lease.ErrNoHardwareAddress)
+		_, err := db.Lease(ctx, ip, noHwAddr, time.Hour, false)
+		assert.ErrorIs(t, err, lease.ErrNoHardwareAddress)
+
+		ips, err := store.ListIPs(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, ips)
+
+		// nor does it release or delete the entries of other clients for it
+		_, err = db.Lease(ctx, ip, client, time.Hour, false)
+		require.NoError(t, err)
+		assert.ErrorIs(t, db.Release(ctx, ip, &noHwAddr), lease.ErrNoHardwareAddress)
+		assert.ErrorIs(t, db.DeleteReservation(ctx, ip, &noHwAddr), lease.ErrNoHardwareAddress)
+
+		owner, leased, _, err := store.FindByIP(ctx, ip)
+		require.NoError(t, err)
+		assert.Equal(t, lease.HardwareAddrID(client.HwAddr), owner)
+		assert.True(t, leased)
+	})
 }

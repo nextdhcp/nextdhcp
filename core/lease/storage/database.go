@@ -127,31 +127,56 @@ func (db *Database) address(ip net.IP) addressHandler {
 	return &storedAddress{db: db, ip: ip}
 }
 
-// Reserve implements lease.Database
+// identify fails with lease.ErrNoHardwareAddress if cli has no hardware
+// address. Clients are identified by it, so all clients without one would
+// share their leases, and storages don't check whose entry they delete for
+// the empty client ID such a client has.
+func identify(cli *lease.Client) error {
+	if cli != nil && idOf(*cli) == "" {
+		return lease.ErrNoHardwareAddress
+	}
+
+	return nil
+}
+
+// Reserve implements lease.Database. It fails with
+// lease.ErrNoHardwareAddress for a client without hardware address.
 func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) error {
+	if err := identify(&cli); err != nil {
+		return err
+	}
+
 	return db.address(ip).reserve(ctx, cli)
 }
 
-// Lease implements lease.Database
+// Lease implements lease.Database. It fails with lease.ErrNoHardwareAddress
+// for a client without hardware address.
 func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
+	if err := identify(&cli); err != nil {
+		return 0, err
+	}
+
 	return db.address(ip).leaseTo(ctx, cli, leaseTime, renew)
 }
 
 // Release implements lease.Database. Given a client, it fails with
-// ErrClientMismatch if the lease or reservation belongs to another client.
+// ErrClientMismatch if the lease or reservation belongs to another client,
+// and with lease.ErrNoHardwareAddress if the client has no hardware address.
 func (db *Database) Release(ctx context.Context, ip net.IP, cli *lease.Client) error {
-	// Storages don't check whose entry they delete for an empty client ID,
-	// which a client without hardware address has, so such a client would
-	// release any address
-	if cli != nil && idOf(*cli) == "" {
-		return ErrClientMismatch
+	if err := identify(cli); err != nil {
+		return err
 	}
 
 	return db.address(ip).release(ctx, cli)
 }
 
-// DeleteReservation implements lease.Database
+// DeleteReservation implements lease.Database. Given a client without
+// hardware address, it fails with lease.ErrNoHardwareAddress.
 func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease.Client) error {
+	if err := identify(cli); err != nil {
+		return err
+	}
+
 	return db.address(ip).deleteReservation(ctx, cli)
 }
 

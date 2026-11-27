@@ -887,3 +887,18 @@ lo {
 		t.Fatal("provisioning the servers doesn't return")
 	}
 }
+
+// TestNoHardwareAddress checks that clients without hardware address, which
+// the lease database identifies clients by, get no address, instead of all of
+// them getting the same one.
+func TestNoHardwareAddress(t *testing.T) {
+	conn := startApp(t, servingDhcpfile)
+	ip := net.IP{127, 0, 0, 100}
+
+	for range 2 {
+		assert.Equal(t, dhcpv4.MessageTypeNak, conn.request(t, net.HardwareAddr{}, ip).MessageType())
+	}
+
+	// the address is still free
+	conn.leaseAddress(t, net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}, ip.String())
+}
