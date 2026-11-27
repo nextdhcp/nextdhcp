@@ -116,6 +116,22 @@ type StaticReserver interface {
 	RemoveStaticConflicts(context.Context) error
 }
 
+// Decliner is implemented by lease databases that can keep an IP address
+// from being leased for a while, which the range plugin needs for the
+// addresses that clients decline.
+type Decliner interface {
+	// Decline keeps the IP address from being leased or reserved to any
+	// client until the given time, as cli, which has a lease or
+	// reservation of it, found that another device on the network uses
+	// it. The lease or reservation of cli is removed, as cli gives the
+	// address up. Decline fails if the address isn't leased or reserved
+	// to cli, and with ErrStaticReservation if it's statically reserved
+	// for cli, which only the configuration can change. The static
+	// reservation of another client already keeps an address from other
+	// clients, so Decline only removes the lease or reservation of cli.
+	Decline(ctx context.Context, ip net.IP, cli Client, until time.Time) error
+}
+
 // Key is a key used to associate a Database with
 // a context.Context
 type Key struct{}

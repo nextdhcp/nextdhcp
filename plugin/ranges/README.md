@@ -20,6 +20,12 @@ be one of the last plugins used. This plugin may be specified multiple times per
 IP addresses that the [*static*](../static) plugin of the server block assigns to clients are never
 leased to other clients.
 
+A client releases its address with a DHCPRELEASE message. A client that finds that another device on
+the network already uses the address it was given declines it with a DHCPDECLINE message. The address is
+then not leased to any client for an hour, and NextDHCP logs a warning, as the other device may have the
+address configured: give that device an address outside the ranges. Only the client that has the
+address can release or decline it.
+
 ## Syntax
 
 ```

@@ -59,8 +59,14 @@ func (m *MockDatabase) RemoveStaticConflicts(context.Context) error {
 	return m.Called().Error(0)
 }
 
+// Decline implements the lease.Decliner interface
+func (m *MockDatabase) Decline(_ context.Context, ip net.IP, cli lease.Client, until time.Time) error {
+	return m.Called(ip, cli, until).Error(0)
+}
+
 // compile time checks
 var (
 	_ lease.Database       = &MockDatabase{}
 	_ lease.StaticReserver = &MockDatabase{}
+	_ lease.Decliner       = &MockDatabase{}
 )

@@ -116,6 +116,7 @@ type addressHandler interface {
 	leaseTo(ctx context.Context, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error)
 	release(ctx context.Context, cli *lease.Client) error
 	deleteReservation(ctx context.Context, cli *lease.Client) error
+	decline(ctx context.Context, cli lease.Client, until time.Time) error
 }
 
 // address returns the handler of ip.
@@ -178,6 +179,25 @@ func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease
 	}
 
 	return db.address(ip).deleteReservation(ctx, cli)
+}
+
+// Decline implements lease.Decliner. It fails with ErrClientMismatch if the
+// address is leased or reserved to another client, and with
+// lease.ErrNoHardwareAddress for a client without hardware address.
+func (db *Database) Decline(ctx context.Context, ip net.IP, cli lease.Client, until time.Time) error {
+	if err := identify(&cli); err != nil {
+		return err
+	}
+
+	return db.address(ip).decline(ctx, cli, until)
+}
+
+// declinedID returns the client ID of the reservation that keeps the
+// declined IP address ip from being leased. Clients are identified by their
+// hardware address, so no client has it, and storages hold one entry per
+// client ID, so each address has its own.
+func declinedID(ip net.IP) lease.ClientID {
+	return lease.ClientID("declined " + ip.String())
 }
 
 // ReserveStatic implements lease.StaticReserver
@@ -354,6 +374,17 @@ func (a *storedAddress) release(ctx context.Context, cli *lease.Client) error {
 	}
 
 	return a.db.store.Delete(ctx, a.ip, id)
+}
+
+// decline removes the lease or reservation of cli, which fails if it's
+// another client's, and reserves the address until then for the client ID of
+// declined addresses, so that it's not leased.
+func (a *storedAddress) decline(ctx context.Context, cli lease.Client, until time.Time) error {
+	if err := a.db.store.Delete(ctx, a.ip, idOf(cli)); err != nil {
+		return err
+	}
+
+	return a.db.store.Create(ctx, a.ip, declinedID(a.ip), false, until)
 }
 
 func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client) error {

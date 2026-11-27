@@ -274,9 +274,48 @@ func (p *RangePlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) er
 
 		// No response should be sent for DHCPRELEASE messages
 		return dhcpserver.ErrNoResponse
+	} else
+
+	// A client that found that another device uses the address it was given
+	// declines it, so the address isn't leased for a while
+	if dhcpserver.Decline(req) && p.Ranges.Contains(req.RequestedIPAddress()) {
+		if err := p.decline(ctx, db, req.RequestedIPAddress(), cli); err != nil {
+			return err
+		}
+
+		// No response should be sent for DHCPDECLINE messages
+		return dhcpserver.ErrNoResponse
 	}
 
 	return p.Next.ServeDHCP(ctx, req, res)
+}
+
+// declineTime is how long an IP address that a client declined isn't leased.
+// The device that uses it may have it configured, so another client would
+// find it in use too.
+const declineTime = time.Hour
+
+// decline keeps ip, which cli declined, from being leased for declineTime,
+// and warns that another device on the network uses it, as RFC 2131 asks.
+func (p *RangePlugin) decline(ctx context.Context, db lease.Database, ip net.IP, cli lease.Client) error {
+	l := log.With(ctx, p.L)
+
+	decliner, ok := db.(lease.Decliner)
+	if !ok {
+		return fmt.Errorf("%s declined IP %s, which another device uses, but the lease database (%T) can't keep it from being leased", cli.HwAddr, ip, db)
+	}
+
+	until := time.Now().Add(declineTime)
+	switch err := decliner.Decline(ctx, ip, cli, until); {
+	case errors.Is(err, lease.ErrStaticReservation):
+		l.Warnf("%s declined its static IP %s: another device on the network uses it", cli.HwAddr, ip)
+	case err != nil:
+		return fmt.Errorf("failed to decline IP %s for %s: %w", ip, cli.HwAddr, err)
+	default:
+		l.Warnf("%s declined IP %s: another device on the network uses it, so it isn't leased until %s", cli.HwAddr, ip, until.Format(time.RFC3339))
+	}
+
+	return nil
 }
 
 func (p *RangePlugin) maySetSubnetMask(req, res *dhcpv4.DHCPv4) {

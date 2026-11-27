@@ -243,3 +243,15 @@ func (a *staticAddress) release(ctx context.Context, cli *lease.Client) error {
 func (a *staticAddress) deleteReservation(context.Context, *lease.Client) error {
 	return lease.ErrStaticReservation
 }
+
+// decline fails with lease.ErrStaticReservation for the client the address
+// is reserved for. Another client gives the address up, which the static
+// reservation already keeps from other clients, so only its lease or
+// reservation is removed, which fails if it's another client's.
+func (a *staticAddress) decline(ctx context.Context, cli lease.Client, _ time.Time) error {
+	if idOf(cli) == idOf(a.r.Client) {
+		return lease.ErrStaticReservation
+	}
+
+	return a.db.store.Delete(ctx, a.r.IP, idOf(cli))
+}
