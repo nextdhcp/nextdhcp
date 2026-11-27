@@ -91,5 +91,9 @@ func TestStorageFactoryInvalidOptions(t *testing.T) {
 		assert.Error(t, err, name)
 	}
 
+	// a file option without a value doesn't configure too many files
+	_, err := open(t, map[string][]string{"file": {}})
+	assert.ErrorContains(t, err, "no database file configured")
+
 	assert.NoFileExists(t, file)
 }

@@ -128,6 +128,14 @@ func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) erro
 	l := dhcpLog.With(ctx, a.db.l)
 	l.Debugf("IP %s statically reserved for client %s", a.r.IP, owner)
 
+	// Storages don't check whose entry they delete for an empty client ID,
+	// which a client without hardware address has, so such a client would
+	// remove the lease of the client the address is reserved for, or of
+	// another client that still uses it. Like Release, it removes nothing.
+	if id == "" {
+		return lease.ErrAddressReserved
+	}
+
 	switch err := a.db.store.Delete(ctx, a.r.IP, id); {
 	case err == nil:
 		l.Infof("removed lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, id, owner)

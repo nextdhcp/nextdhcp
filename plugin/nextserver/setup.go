@@ -46,9 +46,12 @@ func (s *nextServerPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 	}
 
 	serverName := c.Val()
+
+	// The server address field (siaddr) of DHCPv4 messages only holds an
+	// IPv4 address: serializing a response with another address panics
 	ip := net.ParseIP(serverName)
-	if ip == nil {
-		return fmt.Errorf("%s:%d: expected IP address but got %s", c.File(), c.Line(), serverName)
+	if ip.To4() == nil {
+		return fmt.Errorf("%s:%d: expected IPv4 address but got %s", c.File(), c.Line(), serverName)
 	}
 
 	if len(c.RemainingArgs()) > 0 || c.Next() {
@@ -60,8 +63,20 @@ func (s *nextServerPlugin) UnmarshalCaddyfile(c *caddyfile.Dispenser) error {
 	return nil
 }
 
+// Validate checks the next server of a JSON config like UnmarshalCaddyfile
+// checks the one of a Dhcpfile. Without one, responses have no server
+// address.
+func (s *nextServerPlugin) Validate() error {
+	if s.NextServer != nil && s.NextServer.To4() == nil {
+		return fmt.Errorf("next server %s is not an IPv4 address", s.NextServer)
+	}
+
+	return nil
+}
+
 // Interface guards
 var (
+	_ caddy.Validator       = (*nextServerPlugin)(nil)
 	_ caddyfile.Unmarshaler = (*nextServerPlugin)(nil)
 	_ plugin.Middleware     = (*nextServerPlugin)(nil)
 )

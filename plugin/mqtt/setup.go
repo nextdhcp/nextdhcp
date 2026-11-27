@@ -3,7 +3,9 @@ package mqtt
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -140,6 +142,14 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 		}
 
 		m.configs = append(m.configs, cfg)
+	}
+
+	// A block that uses the connection of another one, by its name, could
+	// never publish without it
+	for _, cfg := range m.configs {
+		if cfg.conn == nil && !slices.ContainsFunc(m.configs, func(c *mqttConfig) bool { return c.name == cfg.name && c.conn != nil }) {
+			return fmt.Errorf("no MQTT connection with name %q to use", cfg.name)
+		}
 	}
 
 	return nil
