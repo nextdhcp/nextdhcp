@@ -395,3 +395,76 @@ func TestIPRanges(t *testing.T) {
 	assert.False(t, ranges.Contains(net.IP{10, 8, 0, 21}))
 	assert.True(t, ranges.Contains(net.IP{10, 8, 0, 101}))
 }
+
+// TestDeleteFromMultipleRanges checks that deleting a range keeps the ranges
+// without any address to delete, cuts the ranges it overlaps, and removes
+// the ranges it covers.
+func TestDeleteFromMultipleRanges(t *testing.T) {
+	r := func(start, end string) *IPRange {
+		return &IPRange{Start: net.ParseIP(start).To4(), End: net.ParseIP(end).To4()}
+	}
+
+	ranges := func() []*IPRange {
+		return []*IPRange{
+			r("10.0.0.1", "10.0.0.10"),
+			r("10.0.0.20", "10.0.0.30"),
+			r("10.0.0.40", "10.0.0.50"),
+		}
+	}
+
+	for name, tc := range map[string]struct {
+		input    []*IPRange
+		delete   *IPRange
+		expected []*IPRange
+	}{
+		"inside the middle range": {
+			input:    ranges(),
+			delete:   r("10.0.0.25", "10.0.0.26"),
+			expected: []*IPRange{r("10.0.0.1", "10.0.0.10"), r("10.0.0.20", "10.0.0.24"), r("10.0.0.27", "10.0.0.30"), r("10.0.0.40", "10.0.0.50")},
+		},
+		"spanning all ranges": {
+			input:    ranges(),
+			delete:   r("10.0.0.5", "10.0.0.45"),
+			expected: []*IPRange{r("10.0.0.1", "10.0.0.4"), r("10.0.0.46", "10.0.0.50")},
+		},
+		"covering the middle range": {
+			input:    ranges(),
+			delete:   r("10.0.0.15", "10.0.0.35"),
+			expected: []*IPRange{r("10.0.0.1", "10.0.0.10"), r("10.0.0.40", "10.0.0.50")},
+		},
+		"covering all ranges": {
+			input:    ranges(),
+			delete:   r("10.0.0.0", "10.0.0.255"),
+			expected: []*IPRange{},
+		},
+		"between ranges": {
+			input:    ranges(),
+			delete:   r("10.0.0.12", "10.0.0.18"),
+			expected: ranges(),
+		},
+		"before and after all ranges": {
+			input:    ranges(),
+			delete:   r("10.0.1.0", "10.0.1.10"),
+			expected: ranges(),
+		},
+		"first address": {
+			input:    []*IPRange{r("0.0.0.0", "255.255.255.255")},
+			delete:   r("0.0.0.0", "0.0.0.0"),
+			expected: []*IPRange{r("0.0.0.1", "255.255.255.255")},
+		},
+		"last address": {
+			input:    []*IPRange{r("0.0.0.0", "255.255.255.255")},
+			delete:   r("255.255.255.255", "255.255.255.255"),
+			expected: []*IPRange{r("0.0.0.0", "255.255.255.254")},
+		},
+		"invalid range": {
+			input:    ranges(),
+			delete:   r("10.0.0.30", "10.0.0.20"),
+			expected: ranges(),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, DeleteFrom(tc.delete, tc.input))
+		})
+	}
+}
