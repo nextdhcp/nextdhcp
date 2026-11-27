@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -194,6 +195,56 @@ func TestMqttPublish(t *testing.T) {
 	// the configuration without topic didn't publish anything
 	assert.Empty(t, broker.published)
 	assert.Equal(t, int32(1), broker.conns.Load())
+}
+
+// TestMqttPublishNoResponse checks that messages are published for requests
+// that get no response, like DHCPRELEASE, and that the plugin still tells the
+// server not to respond, but that nothing is published for requests the chain
+// fails to serve.
+func TestMqttPublishNoResponse(t *testing.T) {
+	broker := newFakeBroker(t)
+
+	m, err := makeMqttPlugin(t, fmt.Sprintf(`
+	mqtt msgtype == 'RELEASE' {
+		broker %s
+		topic nextdhcp/released/{hwaddr}
+		payload {clientip}
+	}`, broker.url()))
+	require.NoError(t, err)
+
+	req, err := dhcpv4.New(
+		dhcpv4.WithHwAddr(net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee}),
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRelease),
+		dhcpv4.WithClientIP(net.IP{10, 0, 0, 5}),
+	)
+	require.NoError(t, err)
+	res, err := dhcpv4.NewReplyFromRequest(req)
+	require.NoError(t, err)
+
+	m.Wrap(test.ErrorHandler)
+	err = m.ServeDHCP(context.Background(), req, res)
+	assert.Error(t, err)
+	assert.NotEqual(t, dhcpserver.ErrNoResponse, err)
+	m.wg.Wait()
+	assert.Equal(t, int32(0), broker.conns.Load(), "nothing is published for a request that failed")
+
+	m.Wrap(test.HandlerFunc(func(context.Context, *dhcpv4.DHCPv4, *dhcpv4.DHCPv4) error {
+		return dhcpserver.ErrNoResponse
+	}))
+
+	// the server compares the error with ErrNoResponse itself
+	assert.True(t, m.ServeDHCP(context.Background(), req, res) == dhcpserver.ErrNoResponse)
+	m.wg.Wait()
+
+	select {
+	case msg := <-broker.published:
+		assert.Equal(t, "nextdhcp/released/00:aa:bb:cc:dd:ee", msg.topic)
+		assert.Equal(t, "10.0.0.5", msg.payload)
+	case <-time.After(5 * time.Second):
+		t.Fatal("no message was published")
+	}
+
+	require.NoError(t, m.Cleanup())
 }
 
 // TestMqttNoConnectionAfterCleanup checks that a message that is still being
