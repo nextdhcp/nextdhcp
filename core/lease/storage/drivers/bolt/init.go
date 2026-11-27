@@ -90,6 +90,13 @@ func storageFactory(arguments map[string][]string) (storage.LeaseStorage, error)
 		return nil, err
 	}
 
+	// Databases of NextDHCP versions with an older schema keep their leases
+	// in buckets the current schema doesn't read
+	if err := migrateDatabase(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to migrate database file %s: %w", file, err)
+	}
+
 	d := &Storage{db: db}
 
 	return d, nil
