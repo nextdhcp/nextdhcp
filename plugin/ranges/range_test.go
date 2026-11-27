@@ -1,14 +1,19 @@
 package ranges
 
 import (
+	"context"
 	"net"
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/lease/iprange"
+	"github.com/nextdhcp/nextdhcp/core/lease/mockdb"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // TestRangeValidation checks that ranges must be of IPv4 addresses and must
@@ -41,5 +46,23 @@ func TestRangeValidation(t *testing.T) {
 	} {
 		_, err := test.Provision(t, &RangePlugin{Ranges: iprange.IPRanges{r}})
 		assert.Error(t, err, "%v", r)
+	}
+}
+
+// TestFindUnboundAddrWithoutHardwareAddress checks that the plugin stops
+// looking for an address for a client without hardware address once the
+// database refuses the client, instead of trying each address of its ranges.
+func TestFindUnboundAddrWithoutHardwareAddress(t *testing.T) {
+	p := &RangePlugin{
+		Ranges: iprange.IPRanges{{Start: net.IP{10, 0, 0, 1}, End: net.IP{10, 0, 0, 100}}},
+		L:      zap.NewNop().Sugar(),
+	}
+
+	for _, requested := range []net.IP{nil, {10, 0, 0, 5}} {
+		db := new(mockdb.MockDatabase)
+		db.On("Reserve", mock.Anything, mock.Anything).Return(lease.ErrNoHardwareAddress)
+
+		assert.Nil(t, p.findUnboundAddr(context.Background(), net.HardwareAddr{}, requested, db))
+		db.AssertNumberOfCalls(t, "Reserve", 1)
 	}
 }

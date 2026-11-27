@@ -219,61 +219,46 @@ func Merge(ranges []*IPRange) []*IPRange {
 	return stack
 }
 
-// DeleteFrom deletes a range from a set of IP ranges. The range to delte may span multiple
-// ip ranges
+// DeleteFrom deletes a range from a set of IP ranges, and returns what
+// remains of them. The range to delete may span multiple ranges, cover some
+// of them completely, or contain none of their addresses. An invalid range
+// deletes nothing.
 func DeleteFrom(delete *IPRange, ranges []*IPRange) []*IPRange {
+	if delete.Validate() != nil {
+		return append([]*IPRange{}, ranges...)
+	}
+
 	stack := []*IPRange{}
 
 	deleteStart, _ := IP2Int(delete.Start)
 	deleteEnd, _ := IP2Int(delete.End)
 
-	for i := 0; i < len(ranges); i++ {
-		currStart, _ := IP2Int(ranges[i].Start)
-		currEnd, _ := IP2Int(ranges[i].End)
+	for _, r := range ranges {
+		currStart, _ := IP2Int(r.Start)
+		currEnd, _ := IP2Int(r.End)
 
-		// skip ranges that cannot contain the range to delete
-		if deleteStart > currEnd {
+		// keep ranges without any address to delete
+		if currEnd < deleteStart || currStart > deleteEnd {
+			stack = append(stack, r)
 			continue
 		}
 
-		// do an early exit if no more matching range
-		// can exist
-		if deleteEnd < currStart {
-			break
-		}
-
-		startInRange := deleteStart >= currStart && deleteStart <= currEnd
-		endInRange := deleteEnd >= currStart && deleteEnd <= currEnd
-
-		// not in range: append and continue
-		if !startInRange && !endInRange {
-			stack = append(stack, ranges[i])
-			continue
-		}
-
-		// if true, cut down the end IP of the current range
-		if startInRange {
-			r := &IPRange{
-				Start: ranges[i].Start,
+		// keep the addresses before and after the deleted ones, if any.
+		// So the deleted range doesn't start at 0.0.0.0 or end at
+		// 255.255.255.255 when the address before or after it is taken
+		if currStart < deleteStart {
+			stack = append(stack, &IPRange{
+				Start: r.Start,
 				End:   prevIP(delete.Start), // - 1
-			}
-
-			if r.Len() > 0 {
-				stack = append(stack, r)
-			}
+			})
 		}
 
-		if endInRange {
-			r := &IPRange{
+		if currEnd > deleteEnd {
+			stack = append(stack, &IPRange{
 				Start: nextIP(delete.End), // + 1
-				End:   ranges[i].End,
-			}
-
-			if r.Len() > 0 {
-				stack = append(stack, r)
-			}
+				End:   r.End,
+			})
 		}
-
 	}
 
 	return stack

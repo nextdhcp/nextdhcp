@@ -9,6 +9,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin"
@@ -62,7 +63,11 @@ func (m *mqttPlugin) Name() string {
 // It implements plugin.Handler
 func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dhcpv4.DHCPv4) error {
 	l := log.With(ctx, m.l)
-	if err := m.next.ServeDHCP(ctx, req, resp); err != nil {
+
+	// Messages that get no response, like DHCPRELEASE, are published too, but
+	// not those the chain failed to serve
+	err := m.next.ServeDHCP(ctx, req, resp)
+	if err != nil && err != dhcpserver.ErrNoResponse {
 		return err
 	}
 
@@ -112,7 +117,7 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 		}(cfg)
 	}
 
-	return nil
+	return err
 }
 
 func (m *mqttPlugin) getClient(cfg *mqttConfig) (mqtt.Client, int, error) {

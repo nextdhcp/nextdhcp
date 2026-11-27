@@ -52,6 +52,8 @@ The *bolt* driver also has the following keys:
 * `timeout` is how long to wait for the database file if another process, like another NextDHCP, has it open, before NextDHCP fails to start. Defaults to `5s`; `0` waits forever. Two server blocks can't use the same database file.
 * `mode` is the permissions, in octal, of the database file if NextDHCP creates it. Defaults to `0660`.
 
+The *bolt* driver migrates database files of NextDHCP versions with an older schema when it opens them, so their leases are kept.
+
 ```
 192.168.0.1/24 {
     database bolt {
@@ -63,7 +65,8 @@ The *bolt* driver also has the following keys:
 ```
 
 There's also the built-in *memory* database driver. Note that this driver does not
-persist leases in any way so a restart of NextDHCP will discard all active leases.
+persist leases in any way so a restart of NextDHCP, or a reload of its Dhcpfile, will
+discard all active leases.
 
 **Use with care**
 

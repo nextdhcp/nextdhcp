@@ -139,7 +139,7 @@ func TestReserveStatic(t *testing.T) {
 
 		// releasing the address succeeds, and deleting the reservation
 		// fails, without removing it
-		assert.NoError(t, db.Release(ctx, staticIP))
+		assert.NoError(t, db.Release(ctx, staticIP, nil))
 		assert.ErrorIs(t, db.DeleteReservation(ctx, staticIP, nil), lease.ErrStaticReservation)
 		assert.ErrorIs(t, db.DeleteReservation(ctx, staticIP, &staticClient), lease.ErrStaticReservation)
 		assert.ErrorIs(t, db.Reserve(ctx, staticIP, client2), lease.ErrAddressReserved)
@@ -259,7 +259,7 @@ func TestReleaseStaticConflict(t *testing.T) {
 		db := storage.NewDatabase(store)
 		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
 
-		require.NoError(t, db.Release(ctx, staticIP))
+		require.NoError(t, db.Release(ctx, staticIP, nil))
 
 		_, _, _, err := store.FindByIP(ctx, staticIP)
 		assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
@@ -269,7 +269,7 @@ func TestReleaseStaticConflict(t *testing.T) {
 		assert.ErrorIs(t, db.Reserve(ctx, staticIP, other), lease.ErrAddressReserved)
 
 		// releasing it again still succeeds
-		assert.NoError(t, db.Release(ctx, staticIP))
+		assert.NoError(t, db.Release(ctx, staticIP, nil))
 	})
 }
 
@@ -363,7 +363,7 @@ func TestStaticConflictKeepsOwnerLease(t *testing.T) {
 		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
 
 		require.NoError(t, db.RemoveStaticConflicts(ctx))
-		require.NoError(t, db.Release(ctx, staticIP))
+		require.NoError(t, db.Release(ctx, staticIP, nil))
 
 		owner, leased, _, err := store.FindByIP(ctx, staticIP)
 		require.NoError(t, err)
@@ -481,6 +481,289 @@ func TestStaticAddressReservedForAnother(t *testing.T) {
 		require.NoError(t, db.RemoveStaticConflicts(ctx))
 
 		_, _, _, err := store.FindByIP(ctx, staticIP)
+		assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
+		assert.NoError(t, db.Reserve(ctx, staticIP, staticClient))
+	})
+}
+
+// TestReleaseOfClient checks that releasing an IP address for a client only
+// releases the client's own lease or reservation of it.
+func TestReleaseOfClient(t *testing.T) {
+	ctx := context.Background()
+	client1 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	client2 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+	leasedIP := net.IP{10, 0, 0, 1}
+	reservedIP := net.IP{10, 0, 0, 2}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		db := storage.NewDatabase(store)
+
+		_, err := db.Lease(ctx, leasedIP, client1, time.Hour, false)
+		require.NoError(t, err)
+		require.NoError(t, db.Reserve(ctx, reservedIP, client2))
+
+		owner := func(ip net.IP) lease.ClientID {
+			t.Helper()
+
+			id, _, _, err := store.FindByIP(ctx, ip)
+			if storage.IsNotFound(err) {
+				return ""
+			}
+			require.NoError(t, err)
+
+			return id
+		}
+
+		// other clients, and clients without hardware address, whose
+		// client ID is empty, don't release them
+		assert.ErrorIs(t, db.Release(ctx, leasedIP, &client2), storage.ErrClientMismatch)
+		assert.ErrorIs(t, db.Release(ctx, leasedIP, &lease.Client{}), lease.ErrNoHardwareAddress)
+		assert.ErrorIs(t, db.Release(ctx, reservedIP, &client1), storage.ErrClientMismatch)
+		assert.Equal(t, lease.HardwareAddrID(client1.HwAddr), owner(leasedIP))
+		assert.Equal(t, lease.HardwareAddrID(client2.HwAddr), owner(reservedIP))
+
+		// their own clients do
+		assert.NoError(t, db.Release(ctx, leasedIP, &client1))
+		assert.NoError(t, db.Release(ctx, reservedIP, &client2))
+		assert.Empty(t, owner(leasedIP))
+		assert.Empty(t, owner(reservedIP))
+
+		// and without a client, any lease is released
+		_, err = db.Lease(ctx, leasedIP, client1, time.Hour, false)
+		require.NoError(t, err)
+		assert.NoError(t, db.Release(ctx, leasedIP, nil))
+		assert.Empty(t, owner(leasedIP))
+	})
+}
+
+// TestReleaseStaticOfClient checks that releasing a statically reserved IP
+// address for a client only releases the client's own lease or reservation
+// of it, and keeps the lease of the client the address is reserved for.
+func TestReleaseStaticOfClient(t *testing.T) {
+	ctx := context.Background()
+	staticIP := net.IP{10, 0, 0, 1}
+	staticClient := lease.Client{HwAddr: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}}
+	other := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	third := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		// another client leased the address before it was reserved
+		require.NoError(t, store.Create(ctx, staticIP, lease.HardwareAddrID(other.HwAddr), true, time.Now().Add(time.Hour)))
+
+		db := storage.NewDatabase(store)
+		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
+
+		owner := func() lease.ClientID {
+			t.Helper()
+
+			id, _, _, err := store.FindByIP(ctx, staticIP)
+			if storage.IsNotFound(err) {
+				return ""
+			}
+			require.NoError(t, err)
+
+			return id
+		}
+
+		// neither the client the address is reserved for nor any other
+		// client releases that lease
+		for _, cli := range []lease.Client{staticClient, third} {
+			assert.ErrorIs(t, db.Release(ctx, staticIP, &cli), storage.ErrClientMismatch)
+		}
+		assert.ErrorIs(t, db.Release(ctx, staticIP, &lease.Client{}), lease.ErrNoHardwareAddress)
+		assert.Equal(t, lease.HardwareAddrID(other.HwAddr), owner())
+
+		// its own client does
+		require.NoError(t, db.Release(ctx, staticIP, &other))
+		assert.Empty(t, owner())
+
+		// once the address is leased to the client it's reserved for, other
+		// clients can't release it, and that client keeps its lease when it
+		// releases the address
+		_, err := db.Lease(ctx, staticIP, staticClient, time.Hour, true)
+		require.NoError(t, err)
+
+		assert.ErrorIs(t, db.Release(ctx, staticIP, &other), storage.ErrClientMismatch)
+		assert.NoError(t, db.Release(ctx, staticIP, &staticClient))
+		assert.Equal(t, lease.HardwareAddrID(staticClient.HwAddr), owner())
+	})
+}
+
+// TestStaticRefusalWithoutHardwareAddress checks that a client without
+// hardware address, whose client ID is empty, is refused a statically
+// reserved IP address without removing the lease that another client, or the
+// client the address is reserved for, holds: storages delete any client's
+// entry for an empty client ID.
+func TestStaticRefusalWithoutHardwareAddress(t *testing.T) {
+	ctx := context.Background()
+	staticIP := net.IP{10, 0, 0, 1}
+	staticClient := lease.Client{HwAddr: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}}
+	other := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+
+	for name, holder := range map[string]lease.Client{
+		"lease of another client": other,
+		"lease of its client":     staticClient,
+	} {
+		t.Run(name, func(t *testing.T) {
+			forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+				require.NoError(t, store.Create(ctx, staticIP, lease.HardwareAddrID(holder.HwAddr), true, time.Now().Add(time.Hour)))
+
+				db := storage.NewDatabase(store)
+				require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
+
+				noHwAddr := lease.Client{}
+				assert.ErrorIs(t, db.Reserve(ctx, staticIP, noHwAddr), lease.ErrNoHardwareAddress)
+				_, err := db.Lease(ctx, staticIP, noHwAddr, time.Hour, false)
+				assert.ErrorIs(t, err, lease.ErrNoHardwareAddress)
+
+				id, leased, _, err := store.FindByIP(ctx, staticIP)
+				require.NoError(t, err)
+				assert.Equal(t, lease.HardwareAddrID(holder.HwAddr), id)
+				assert.True(t, leased)
+			})
+		})
+	}
+}
+
+// TestClientWithoutHardwareAddress checks that the database refuses clients
+// without hardware address, which it identifies clients by: they would all
+// share one lease, and could remove the entries of other clients.
+func TestClientWithoutHardwareAddress(t *testing.T) {
+	ctx := context.Background()
+	ip := net.IP{10, 0, 0, 1}
+	noHwAddr := lease.Client{Hostname: "unknown"}
+	client := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		db := storage.NewDatabase(store)
+
+		assert.ErrorIs(t, db.Reserve(ctx, ip, noHwAddr), lease.ErrNoHardwareAddress)
+		_, err := db.Lease(ctx, ip, noHwAddr, time.Hour, false)
+		assert.ErrorIs(t, err, lease.ErrNoHardwareAddress)
+
+		ips, err := store.ListIPs(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, ips)
+
+		// nor does it release or delete the entries of other clients for it
+		_, err = db.Lease(ctx, ip, client, time.Hour, false)
+		require.NoError(t, err)
+		assert.ErrorIs(t, db.Release(ctx, ip, &noHwAddr), lease.ErrNoHardwareAddress)
+		assert.ErrorIs(t, db.DeleteReservation(ctx, ip, &noHwAddr), lease.ErrNoHardwareAddress)
+
+		owner, leased, _, err := store.FindByIP(ctx, ip)
+		require.NoError(t, err)
+		assert.Equal(t, lease.HardwareAddrID(client.HwAddr), owner)
+		assert.True(t, leased)
+	})
+}
+
+// TestDecline checks that an IP address that its client declined isn't leased
+// or reserved to any client until the given time, and that only that client
+// can decline it.
+func TestDecline(t *testing.T) {
+	ctx := context.Background()
+	client1 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	client2 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+	leasedIP := net.IP{10, 0, 0, 1}
+	reservedIP := net.IP{10, 0, 0, 2}
+	until := time.Now().Add(time.Hour)
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		db := storage.NewDatabase(store)
+
+		_, err := db.Lease(ctx, leasedIP, client1, time.Hour, false)
+		require.NoError(t, err)
+		require.NoError(t, db.Reserve(ctx, reservedIP, client2))
+
+		// other clients can't decline an address
+		assert.ErrorIs(t, db.Decline(ctx, leasedIP, client2, until), storage.ErrClientMismatch)
+		assert.ErrorIs(t, db.Decline(ctx, leasedIP, lease.Client{}, until), lease.ErrNoHardwareAddress)
+		err = db.Decline(ctx, net.IP{10, 0, 0, 3}, client1, until)
+		assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
+
+		owner, _, _, err := store.FindByIP(ctx, leasedIP)
+		require.NoError(t, err)
+		assert.Equal(t, lease.HardwareAddrID(client1.HwAddr), owner)
+
+		// the clients decline their addresses, one after the other
+		require.NoError(t, db.Decline(ctx, leasedIP, client1, until))
+		require.NoError(t, db.Decline(ctx, reservedIP, client2, until))
+
+		// so no client gets them, not even the clients that declined them,
+		// whose leases and reservations are removed
+		for _, ip := range []net.IP{leasedIP, reservedIP} {
+			for _, cli := range []lease.Client{client1, client2} {
+				assert.ErrorIs(t, db.Reserve(ctx, ip, cli), lease.ErrAddressReserved)
+				_, err := db.Lease(ctx, ip, cli, time.Hour, false)
+				assert.ErrorIs(t, err, lease.ErrAddressReserved)
+			}
+		}
+
+		leases, err := db.Leases(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, leases)
+
+		// and they get other addresses
+		assert.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 3}, client1))
+		assert.NoError(t, db.Reserve(ctx, net.IP{10, 0, 0, 4}, client2))
+	})
+}
+
+// TestDeclineExpires checks that a declined IP address is leased again once
+// the given time passed.
+func TestDeclineExpires(t *testing.T) {
+	ctx := context.Background()
+	ip := net.IP{10, 0, 0, 1}
+	client1 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	client2 := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		db := storage.NewDatabase(store)
+
+		_, err := db.Lease(ctx, ip, client1, time.Hour, false)
+		require.NoError(t, err)
+		require.NoError(t, db.Decline(ctx, ip, client1, time.Now().Add(-time.Minute)))
+
+		leaseTime, err := db.Lease(ctx, ip, client2, time.Hour, false)
+		require.NoError(t, err)
+		assert.Equal(t, time.Hour, leaseTime)
+
+		owner, leased, _, err := store.FindByIP(ctx, ip)
+		require.NoError(t, err)
+		assert.Equal(t, lease.HardwareAddrID(client2.HwAddr), owner)
+		assert.True(t, leased)
+	})
+}
+
+// TestDeclineStatic checks that the client a static IP address is reserved
+// for can't decline it, and that another client that still has a lease of
+// it declines it without keeping it from the client it's reserved for.
+func TestDeclineStatic(t *testing.T) {
+	ctx := context.Background()
+	staticIP := net.IP{10, 0, 0, 1}
+	staticClient := lease.Client{HwAddr: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}}
+	other := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}
+	third := lease.Client{HwAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}
+	until := time.Now().Add(time.Hour)
+
+	forEachDriver(t, func(t *testing.T, store storage.LeaseStorage) {
+		// another client leased the address before it was reserved
+		require.NoError(t, store.Create(ctx, staticIP, lease.HardwareAddrID(other.HwAddr), true, time.Now().Add(time.Hour)))
+
+		db := storage.NewDatabase(store)
+		require.NoError(t, db.ReserveStatic(ctx, lease.ReservedAddress{Client: staticClient, IP: net.ParseIP("10.0.0.1")}))
+
+		assert.ErrorIs(t, db.Decline(ctx, staticIP, staticClient, until), lease.ErrStaticReservation)
+		assert.ErrorIs(t, db.Decline(ctx, staticIP, third, until), storage.ErrClientMismatch)
+
+		owner, _, _, err := store.FindByIP(ctx, staticIP)
+		require.NoError(t, err)
+		assert.Equal(t, lease.HardwareAddrID(other.HwAddr), owner)
+
+		require.NoError(t, db.Decline(ctx, staticIP, other, until))
+
+		_, _, _, err = store.FindByIP(ctx, staticIP)
 		assert.True(t, storage.IsNotFound(err), "unexpected error %v", err)
 		assert.NoError(t, db.Reserve(ctx, staticIP, staticClient))
 	})

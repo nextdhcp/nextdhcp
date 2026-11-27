@@ -51,6 +51,12 @@ func (p *Plugin) GetBootFileOpt(ctx context.Context, req, res *dhcpv4.DHCPv4) (*
 func (p *Plugin) parseBootFileName(req *dhcpv4.DHCPv4) string {
 	archs := iana.Archs(req.ClientArch())
 
+	// Only network-booting clients send their architecture, so other
+	// clients get no boot file
+	if len(archs) == 0 {
+		return ""
+	}
+
 	var bootFile string
 
 	switch archs[0] {

@@ -11,6 +11,7 @@ import (
 	"github.com/gotify/go-api-client/v2/gotify"
 	"github.com/gotify/go-api-client/v2/models"
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin"
@@ -122,8 +123,11 @@ func (g *gotifyPlugin) Name() string {
 func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 	l := log.With(ctx, g.l)
 
-	// let the whole handler chain pass through
-	if err := g.next.ServeDHCP(ctx, req, res); err != nil {
+	// let the whole handler chain pass through. Messages that get no
+	// response, like DHCPRELEASE, are notified about too, but not those the
+	// chain failed to serve
+	err := g.next.ServeDHCP(ctx, req, res)
+	if err != nil && err != dhcpserver.ErrNoResponse {
 		return err
 	}
 
@@ -151,5 +155,5 @@ func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) e
 		}(n)
 	}
 
-	return nil
+	return err
 }

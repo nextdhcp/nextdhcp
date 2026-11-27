@@ -40,8 +40,8 @@ func (m *MockDatabase) Reserve(_ context.Context, ip net.IP, cli lease.Client) e
 }
 
 // Release implements the lease.Database interface
-func (m *MockDatabase) Release(_ context.Context, ip net.IP) error {
-	return m.Called(ip).Error(0)
+func (m *MockDatabase) Release(_ context.Context, ip net.IP, cli *lease.Client) error {
+	return m.Called(ip, cli).Error(0)
 }
 
 // DeleteReservation implements the lease.Database interface
@@ -59,8 +59,14 @@ func (m *MockDatabase) RemoveStaticConflicts(context.Context) error {
 	return m.Called().Error(0)
 }
 
+// Decline implements the lease.Decliner interface
+func (m *MockDatabase) Decline(_ context.Context, ip net.IP, cli lease.Client, until time.Time) error {
+	return m.Called(ip, cli, until).Error(0)
+}
+
 // compile time checks
 var (
 	_ lease.Database       = &MockDatabase{}
 	_ lease.StaticReserver = &MockDatabase{}
+	_ lease.Decliner       = &MockDatabase{}
 )

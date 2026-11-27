@@ -193,7 +193,9 @@ func (s *Plugin) handOver(ctx context.Context, ip net.IP, cli lease.Client) bool
 		return false
 	}
 
-	if err := s.Config.Database.Release(ctx, ip); err != nil {
+	// release the lease without a client, as it belongs to another client
+	// than cli
+	if err := s.Config.Database.Release(ctx, ip, nil); err != nil {
 		l.Warnf("%s: failed to end another client's lease of static IP %s, which no device uses: %s", cli.HwAddr, ip, err.Error())
 		return false
 	}

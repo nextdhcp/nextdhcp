@@ -38,7 +38,11 @@ func storageFactory(arguments map[string][]string) (storage.LeaseStorage, error)
 	for key, values := range arguments {
 		switch key {
 		case "__args__", "file":
-			if len(values) != 1 || file != "" {
+			if len(values) == 0 {
+				return nil, fmt.Errorf("no database file configured")
+			}
+
+			if len(values) > 1 || file != "" {
 				return nil, fmt.Errorf("only one database file can be configured")
 			}
 
@@ -84,6 +88,13 @@ func storageFactory(arguments map[string][]string) (storage.LeaseStorage, error)
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Databases of NextDHCP versions with an older schema keep their leases
+	// in buckets the current schema doesn't read
+	if err := migrateDatabase(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to migrate database file %s: %w", file, err)
 	}
 
 	d := &Storage{db: db}

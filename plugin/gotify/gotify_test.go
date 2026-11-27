@@ -10,6 +10,7 @@ import (
 	"github.com/gotify/go-api-client/v2/client/message"
 	"github.com/gotify/go-api-client/v2/models"
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
 	"github.com/stretchr/testify/assert"
@@ -184,4 +185,53 @@ func TestGotifyServeDHCP(t *testing.T) {
 
 	assert.Equal(t, 1, called)
 	assert.Equal(t, "message1", messages[0].Message)
+}
+
+// TestGotifyNoResponse checks that notifications are sent for messages that
+// get no response, like DHCPRELEASE, and that the plugin still tells the
+// server not to respond.
+func TestGotifyNoResponse(t *testing.T) {
+	orig := notify
+	t.Cleanup(func() { notify = orig })
+
+	var messages []string
+	notify = func(srv *url.URL, token string, msg *message.CreateMessageParams) error {
+		messages = append(messages, msg.Body.Message)
+		return nil
+	}
+
+	released, err := matcher.SetupMatcherString("msgtype == 'RELEASE'")
+	require.NoError(t, err)
+
+	g := &gotifyPlugin{
+		notifications: []*notification{
+			{
+				Matcher: released,
+				msg: func(_ context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
+					return "released", nil
+				},
+				srv:   "http://gotify.com",
+				token: "some-token",
+			},
+		},
+		l: zap.NewNop().Sugar(),
+		next: test.HandlerFunc(func(context.Context, *dhcpv4.DHCPv4, *dhcpv4.DHCPv4) error {
+			return dhcpserver.ErrNoResponse
+		}),
+	}
+
+	req, err := dhcpv4.New(
+		dhcpv4.WithHwAddr(net.HardwareAddr{0, 1, 2, 3, 4, 5}),
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRelease),
+		dhcpv4.WithClientIP(net.IP{10, 0, 0, 5}),
+	)
+	require.NoError(t, err)
+	res, err := dhcpv4.NewReplyFromRequest(req)
+	require.NoError(t, err)
+
+	// the server compares the error with ErrNoResponse itself
+	assert.True(t, g.ServeDHCP(context.Background(), req, res) == dhcpserver.ErrNoResponse)
+	g.wg.Wait()
+
+	assert.Equal(t, []string{"released"}, messages)
 }

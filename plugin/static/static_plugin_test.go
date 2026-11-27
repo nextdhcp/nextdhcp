@@ -232,7 +232,7 @@ type failingRelease struct {
 	*storage.Database
 }
 
-func (failingRelease) Release(context.Context, net.IP) error {
+func (failingRelease) Release(context.Context, net.IP, *lease.Client) error {
 	return assert.AnError
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -723,6 +724,79 @@ func TestLeaseTimeOfKeptLease(t *testing.T) {
 	assert.Greater(t, ack.IPAddressLeaseTime(0), 59*time.Minute)
 }
 
+// send sends msg to the server, from the address from, without waiting for
+// a response.
+func (c *fakeConn) send(t *testing.T, msg *dhcpv4.DHCPv4, from net.IP) {
+	t.Helper()
+
+	select {
+	case c.requests <- packet{payload: msg.ToBytes(), addr: &net.UDPAddr{IP: from, Port: dhcpv4.ClientPort}}:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server didn't read the request")
+	}
+}
+
+// release sends a RELEASE of client for ip, which the server doesn't respond
+// to.
+func (c *fakeConn) release(t *testing.T, client net.HardwareAddr, ip net.IP) {
+	t.Helper()
+
+	release, err := dhcpv4.New(
+		dhcpv4.WithHwAddr(client),
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRelease),
+		dhcpv4.WithClientIP(ip),
+	)
+	require.NoError(t, err)
+
+	c.send(t, release, ip)
+}
+
+// TestReleaseOwnLeaseOnly checks that a client can release its own lease, but
+// not the lease of another client, which would let the server lease the
+// address to a third client while the other client still uses it.
+func TestReleaseOwnLeaseOnly(t *testing.T) {
+	owner := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}
+	other := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x02}
+	ip := net.IP{127, 0, 0, 100}
+
+	for name, tc := range map[string]struct {
+		releasedBy net.HardwareAddr
+		released   bool
+	}{
+		"own lease":          {releasedBy: owner, released: true},
+		"other client lease": {releasedBy: other, released: false},
+		// a client can leave the hardware address out of its requests
+		"no hardware address": {releasedBy: net.HardwareAddr{}, released: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			conn := newFakeConn()
+			app := startAppWithConn(t, servingDhcpfile, conn)
+
+			conn.leaseAddress(t, owner, ip.String())
+			conn.release(t, tc.releasedBy, ip)
+
+			// Stop returns once the server served all requests it read
+			require.NoError(t, app.Stop())
+
+			leases, err := app.Servers[0].Database.Leases(context.Background())
+			require.NoError(t, err)
+
+			var holders []string
+			for _, l := range leases {
+				if l.Address.Equal(ip) {
+					holders = append(holders, string(l.ID))
+				}
+			}
+
+			if tc.released {
+				assert.Empty(t, holders)
+			} else {
+				assert.Equal(t, []string{owner.String()}, holders)
+			}
+		})
+	}
+}
+
 // TestServeFailure checks that the app reports a server that stops serving
 // because reading requests fails, but not a server that is stopped.
 func TestServeFailure(t *testing.T) {
@@ -821,4 +895,53 @@ lo {
 	case <-time.After(10 * time.Second):
 		t.Fatal("provisioning the servers doesn't return")
 	}
+}
+
+// TestNoHardwareAddress checks that clients without hardware address, which
+// the lease database identifies clients by, get no address, instead of all of
+// them getting the same one.
+func TestNoHardwareAddress(t *testing.T) {
+	conn := startApp(t, servingDhcpfile)
+	ip := net.IP{127, 0, 0, 100}
+
+	for range 2 {
+		assert.Equal(t, dhcpv4.MessageTypeNak, conn.request(t, net.HardwareAddr{}, ip).MessageType())
+	}
+
+	// the address is still free
+	conn.leaseAddress(t, net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}, ip.String())
+}
+
+// TestDecline checks that an address that a client declines, as another
+// device uses it, isn't leased again, to that client or any other.
+func TestDecline(t *testing.T) {
+	conn := newFakeConn()
+	app := startAppWithConn(t, servingDhcpfile, conn)
+
+	client := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01}
+	other := net.HardwareAddr{0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x02}
+	declined := net.IP{127, 0, 0, 100}
+
+	conn.leaseAddress(t, client, declined.String())
+
+	decline, err := dhcpv4.New(
+		dhcpv4.WithHwAddr(client),
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeDecline),
+		dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(declined)),
+		dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1})),
+	)
+	require.NoError(t, err)
+	conn.send(t, decline, net.IPv4zero)
+
+	// the server doesn't respond, so wait until the database holds that the
+	// address is reserved, but not for the client
+	require.Eventually(t, func() bool {
+		reserved, err := app.Servers[0].Database.ReservedAddresses(context.Background())
+		r := reserved.FindIP(declined)
+
+		return err == nil && r != nil && r.ID != lease.HardwareAddrID(client)
+	}, 5*time.Second, 10*time.Millisecond)
+
+	conn.leaseAddress(t, client, "127.0.0.101")
+	conn.leaseAddress(t, other, "127.0.0.102")
 }

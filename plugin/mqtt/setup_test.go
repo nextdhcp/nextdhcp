@@ -163,6 +163,7 @@ func TestMqttProvisionValidates(t *testing.T) {
 		"no connection":           {Topic: &topic},
 		"no topic":                {Name: "local", Connection: &ConnectionConfig{}, Condition: "msgtype == 'DISCOVER'"},
 		"unnamed connection only": {Connection: &ConnectionConfig{}},
+		"undefined connection":    {Name: "missing", Topic: &topic},
 	} {
 		_, err := test.Provision(t, &mqttPlugin{Publish: []PublishConfig{pub}})
 		assert.Error(t, err, name)

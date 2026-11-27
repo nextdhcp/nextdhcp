@@ -64,6 +64,13 @@ func v0_1MigrateBucket(db *bbolt.Tx, bucket *bbolt.Bucket, leased bool) error {
 			return err
 		}
 
+		// entries without client ID can't be stored, as bolt requires
+		// keys, and identify no client
+		if e.ClientID == "" {
+			key, value = cursor.Next()
+			continue
+		}
+
 		if !leased {
 			// we skip expired reservations
 			// but not expired leases
@@ -109,6 +116,13 @@ func v0_1MigrateBinding(key, value []byte, leased bool) (*entry, error) {
 	}, nil
 }
 
+// v0_1InsertEntry stores the entry e of ip, unless ip or the client of e
+// already has an entry. The database may hold entries of the current schema
+// next to the old ones, from a NextDHCP that stored them without migrating
+// the database first, and those are more recent. Leases are migrated before
+// reservations, so they are kept over those too. Replacing an entry would
+// also leave the IP of one entry and the client of another pointing at each
+// other.
 func v0_1InsertEntry(tx *bbolt.Tx, ip net.IP, e *entry) error {
 	blob, err := json.Marshal(e)
 	if err != nil {
@@ -118,6 +132,10 @@ func v0_1InsertEntry(tx *bbolt.Tx, ip net.IP, e *entry) error {
 	ipLeasesBucket, idToIPBucket, err := openOrCreateBuckets(tx)
 	if err != nil {
 		return err
+	}
+
+	if ipLeasesBucket.Get([]byte(ip)) != nil || idToIPBucket.Get([]byte(e.ClientID)) != nil {
+		return nil
 	}
 
 	if err := idToIPBucket.Put([]byte(e.ClientID), []byte(ip)); err != nil {

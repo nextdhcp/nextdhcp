@@ -23,6 +23,10 @@ var (
 	// ErrStaticReservation indicates that the IP address is statically
 	// reserved, which only the configuration can change
 	ErrStaticReservation = errors.New("IP is statically reserved")
+
+	// ErrNoHardwareAddress indicates that the client has no hardware
+	// address, which lease databases identify clients by
+	ErrNoHardwareAddress = errors.New("client has no hardware address")
 )
 
 // Database describes a lease database interface
@@ -59,8 +63,11 @@ type Database interface {
 
 	// Release releases a previous client IP address lease. If no
 	// such lease exists the list of reserved IP addresses is
-	// checked and any reservation for the client is removed
-	Release(context.Context, net.IP) error
+	// checked and any reservation for the client is removed. If a
+	// client is given, the lease or reservation is only released if
+	// it belongs to that client, so that clients can't release the
+	// addresses of other clients
+	Release(context.Context, net.IP, *Client) error
 
 	// DeleteReservation deletes a IP address reservation
 	DeleteReservation(context.Context, net.IP, *Client) error
@@ -87,7 +94,9 @@ type StaticReserver interface {
 	// made again whenever the database is opened. Release succeeds for
 	// a statically reserved IP address, removing other clients' stored
 	// leases and reservations of it but neither the static reservation
-	// nor its client's, DeleteReservation fails with
+	// nor its client's. Given a client, Release fails, like for any
+	// other address, if the stored lease or reservation belongs to
+	// another client. DeleteReservation fails with
 	// ErrStaticReservation, and ReservedAddresses returns static
 	// reservations without an expiration time. ReserveStatic fails if r
 	// has an expiration time, or if the IP address or the client
@@ -105,6 +114,22 @@ type StaticReserver interface {
 	// servers call RemoveStaticConflicts once they serve, so nothing
 	// is removed if they fail to start
 	RemoveStaticConflicts(context.Context) error
+}
+
+// Decliner is implemented by lease databases that can keep an IP address
+// from being leased for a while, which the range plugin needs for the
+// addresses that clients decline.
+type Decliner interface {
+	// Decline keeps the IP address from being leased or reserved to any
+	// client until the given time, as cli, which has a lease or
+	// reservation of it, found that another device on the network uses
+	// it. The lease or reservation of cli is removed, as cli gives the
+	// address up. Decline fails if the address isn't leased or reserved
+	// to cli, and with ErrStaticReservation if it's statically reserved
+	// for cli, which only the configuration can change. The static
+	// reservation of another client already keeps an address from other
+	// clients, so Decline only removes the lease or reservation of cli.
+	Decline(ctx context.Context, ip net.IP, cli Client, until time.Time) error
 }
 
 // Key is a key used to associate a Database with

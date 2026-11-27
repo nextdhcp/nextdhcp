@@ -114,8 +114,9 @@ func (db *Database) ReservedAddresses(ctx context.Context) (lease.ReservedAddres
 type addressHandler interface {
 	reserve(ctx context.Context, cli lease.Client) error
 	leaseTo(ctx context.Context, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error)
-	release(ctx context.Context) error
+	release(ctx context.Context, cli *lease.Client) error
 	deleteReservation(ctx context.Context, cli *lease.Client) error
+	decline(ctx context.Context, cli lease.Client, until time.Time) error
 }
 
 // address returns the handler of ip.
@@ -127,24 +128,76 @@ func (db *Database) address(ip net.IP) addressHandler {
 	return &storedAddress{db: db, ip: ip}
 }
 
-// Reserve implements lease.Database
+// identify fails with lease.ErrNoHardwareAddress if cli has no hardware
+// address. Clients are identified by it, so all clients without one would
+// share their leases, and storages don't check whose entry they delete for
+// the empty client ID such a client has.
+func identify(cli *lease.Client) error {
+	if cli != nil && idOf(*cli) == "" {
+		return lease.ErrNoHardwareAddress
+	}
+
+	return nil
+}
+
+// Reserve implements lease.Database. It fails with
+// lease.ErrNoHardwareAddress for a client without hardware address.
 func (db *Database) Reserve(ctx context.Context, ip net.IP, cli lease.Client) error {
+	if err := identify(&cli); err != nil {
+		return err
+	}
+
 	return db.address(ip).reserve(ctx, cli)
 }
 
-// Lease implements lease.Database
+// Lease implements lease.Database. It fails with lease.ErrNoHardwareAddress
+// for a client without hardware address.
 func (db *Database) Lease(ctx context.Context, ip net.IP, cli lease.Client, leaseTime time.Duration, renew bool) (time.Duration, error) {
+	if err := identify(&cli); err != nil {
+		return 0, err
+	}
+
 	return db.address(ip).leaseTo(ctx, cli, leaseTime, renew)
 }
 
-// Release implements lease.Database
-func (db *Database) Release(ctx context.Context, ip net.IP) error {
-	return db.address(ip).release(ctx)
+// Release implements lease.Database. Given a client, it fails with
+// ErrClientMismatch if the lease or reservation belongs to another client,
+// and with lease.ErrNoHardwareAddress if the client has no hardware address.
+func (db *Database) Release(ctx context.Context, ip net.IP, cli *lease.Client) error {
+	if err := identify(cli); err != nil {
+		return err
+	}
+
+	return db.address(ip).release(ctx, cli)
 }
 
-// DeleteReservation implements lease.Database
+// DeleteReservation implements lease.Database. Given a client without
+// hardware address, it fails with lease.ErrNoHardwareAddress.
 func (db *Database) DeleteReservation(ctx context.Context, ip net.IP, cli *lease.Client) error {
+	if err := identify(cli); err != nil {
+		return err
+	}
+
 	return db.address(ip).deleteReservation(ctx, cli)
+}
+
+// Decline implements lease.Decliner. It fails with ErrClientMismatch if the
+// address is leased or reserved to another client, and with
+// lease.ErrNoHardwareAddress for a client without hardware address.
+func (db *Database) Decline(ctx context.Context, ip net.IP, cli lease.Client, until time.Time) error {
+	if err := identify(&cli); err != nil {
+		return err
+	}
+
+	return db.address(ip).decline(ctx, cli, until)
+}
+
+// declinedID returns the client ID of the reservation that keeps the
+// declined IP address ip from being leased. Clients are identified by their
+// hardware address, so no client has it, and storages hold one entry per
+// client ID, so each address has its own.
+func declinedID(ip net.IP) lease.ClientID {
+	return lease.ClientID("declined " + ip.String())
 }
 
 // ReserveStatic implements lease.StaticReserver
@@ -313,8 +366,25 @@ func (a *storedAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 	return leaseTime, nil
 }
 
-func (a *storedAddress) release(ctx context.Context) error {
-	return a.db.store.Delete(ctx, a.ip, "")
+func (a *storedAddress) release(ctx context.Context, cli *lease.Client) error {
+	// storages only delete the entry of the given client, if any
+	var id lease.ClientID
+	if cli != nil {
+		id = idOf(*cli)
+	}
+
+	return a.db.store.Delete(ctx, a.ip, id)
+}
+
+// decline removes the lease or reservation of cli, which fails if it's
+// another client's, and reserves the address until then for the client ID of
+// declined addresses, so that it's not leased.
+func (a *storedAddress) decline(ctx context.Context, cli lease.Client, until time.Time) error {
+	if err := a.db.store.Delete(ctx, a.ip, idOf(cli)); err != nil {
+		return err
+	}
+
+	return a.db.store.Create(ctx, a.ip, declinedID(a.ip), false, until)
 }
 
 func (a *storedAddress) deleteReservation(ctx context.Context, cli *lease.Client) error {

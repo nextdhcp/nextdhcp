@@ -130,8 +130,8 @@ func ParseKnown(name string, values []string) (dhcpv4.OptionCode, dhcpv4.OptionV
 		case list:
 			val, err = fn(values)
 		case single:
-			if len(values) > 1 {
-				return nil, nil, fmt.Errorf("option %s only supports one value", name)
+			if len(values) != 1 {
+				return nil, nil, fmt.Errorf("option %s requires exactly one value", name)
 			}
 			val, err = fn(values[0])
 		case custom:

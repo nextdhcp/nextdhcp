@@ -128,6 +128,8 @@ func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) erro
 	l := dhcpLog.With(ctx, a.db.l)
 	l.Debugf("IP %s statically reserved for client %s", a.r.IP, owner)
 
+	// Database refuses clients without hardware address, whose empty client
+	// ID would delete the entry of any client
 	switch err := a.db.store.Delete(ctx, a.r.IP, id); {
 	case err == nil:
 		l.Infof("removed lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, id, owner)
@@ -212,14 +214,20 @@ func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 
 // release keeps the static reservation and the stored lease or reservation
 // of its client, and removes the lease or reservation of another client,
-// which gives the address up.
-func (a *staticAddress) release(ctx context.Context) error {
+// which gives the address up. Given a client, it fails with
+// ErrClientMismatch if the stored lease or reservation belongs to another
+// client.
+func (a *staticAddress) release(ctx context.Context, cli *lease.Client) error {
 	existing, _, _, err := a.db.store.FindByIP(ctx, a.r.IP)
 	switch {
 	case IsNotFound(err):
 		return nil
 	case err != nil:
 		return err
+	}
+
+	if cli != nil && idOf(*cli) != existing {
+		return ErrClientMismatch
 	}
 
 	owner := idOf(a.r.Client)
@@ -234,4 +242,16 @@ func (a *staticAddress) release(ctx context.Context) error {
 
 func (a *staticAddress) deleteReservation(context.Context, *lease.Client) error {
 	return lease.ErrStaticReservation
+}
+
+// decline fails with lease.ErrStaticReservation for the client the address
+// is reserved for. Another client gives the address up, which the static
+// reservation already keeps from other clients, so only its lease or
+// reservation is removed, which fails if it's another client's.
+func (a *staticAddress) decline(ctx context.Context, cli lease.Client, _ time.Time) error {
+	if idOf(cli) == idOf(a.r.Client) {
+		return lease.ErrStaticReservation
+	}
+
+	return a.db.store.Delete(ctx, a.r.IP, idOf(cli))
 }
