@@ -11,15 +11,9 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/mdlayher/packet"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
-
-type nopLogger struct{}
-
-func (nopLogger) Debugf(string, ...interface{}) {}
-func (nopLogger) Infof(string, ...interface{})  {}
-func (nopLogger) Warnf(string, ...interface{})  {}
-func (nopLogger) Errorf(string, ...interface{}) {}
 
 // fakeRawConn stands in for the AF_PACKET socket. It records the frames
 // written to it, and once closed its reads fail with an error that is not
@@ -89,7 +83,7 @@ func listenWithFakeRaw(t *testing.T, ip net.IP, iface *net.Interface) (*DHCPConn
 		return raw, nil
 	})
 
-	conn, err := ListenDHCP(nopLogger{}, ip, iface)
+	conn, err := ListenDHCP(zerolog.Nop(), ip, iface)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
@@ -103,7 +97,7 @@ func TestDHCPConnCloseReturns(t *testing.T) {
 		return net.ListenPacket("udp4", "127.0.0.1:0")
 	})
 
-	conn, err := ListenDHCP(nopLogger{}, net.IPv4(127, 0, 0, 1), &net.Interface{Name: "test"})
+	conn, err := ListenDHCP(zerolog.Nop(), net.IPv4(127, 0, 0, 1), &net.Interface{Name: "test"})
 	require.NoError(t, err)
 
 	done := make(chan error, 1)
@@ -132,7 +126,7 @@ func TestListenDHCPClosesUDPOnRawError(t *testing.T) {
 		return nil, rawErr
 	}
 
-	_, err := ListenDHCP(nopLogger{}, net.IPv4(127, 0, 0, 1), &net.Interface{Name: "test"})
+	_, err := ListenDHCP(zerolog.Nop(), net.IPv4(127, 0, 0, 1), &net.Interface{Name: "test"})
 	require.ErrorIs(t, err, rawErr)
 
 	// Closing the UDP socket again only reports net.ErrClosed if ListenDHCP

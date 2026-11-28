@@ -96,12 +96,14 @@ func TestAdaptAllDirectives(t *testing.T) {
 	require.NotNil(t, cfg.Admin.Config.Persist)
 	assert.False(t, *cfg.Admin.Config.Persist)
 
-	// log sets the level of the default log, which doesn't include the
-	// logs of the admin endpoint
+	// zerolog logs what is logged to the default log, which doesn't include
+	// the logs of the admin endpoint, from the level on that log sets
 	require.NotNil(t, cfg.Logging)
 	require.Contains(t, cfg.Logging.Logs, caddy.DefaultLoggerName)
-	assert.Equal(t, "DEBUG", cfg.Logging.Logs[caddy.DefaultLoggerName].Level)
-	assert.Equal(t, []string{"admin"}, cfg.Logging.Logs[caddy.DefaultLoggerName].Exclude)
+	defaultLog := cfg.Logging.Logs[caddy.DefaultLoggerName]
+	assert.JSONEq(t, `{"output": "discard"}`, string(defaultLog.WriterRaw))
+	assert.JSONEq(t, `{"module": "zerolog", "level": "debug"}`, string(defaultLog.CoreRaw))
+	assert.Equal(t, []string{"admin"}, defaultLog.Exclude)
 
 	require.Len(t, app.Servers, 1)
 	srv := app.Servers[0]
@@ -153,7 +155,7 @@ database memory
 }
 
 func TestAdaptMultipleServerBlocks(t *testing.T) {
-	_, app, err := adapt(t, `
+	cfg, app, err := adapt(t, `
 127.0.0.1/8 {
 	database memory
 	lease 1h
@@ -166,6 +168,11 @@ lo {
 `)
 	require.NoError(t, err)
 	require.Len(t, app.Servers, 2)
+
+	// without the log directive, messages are logged from the info level on
+	require.NotNil(t, cfg.Logging)
+	require.Contains(t, cfg.Logging.Logs, caddy.DefaultLoggerName)
+	assert.JSONEq(t, `{"module": "zerolog", "level": "info"}`, string(cfg.Logging.Logs[caddy.DefaultLoggerName].CoreRaw))
 
 	assert.Equal(t, "127.0.0.1/8", app.Servers[0].Subnet)
 	assert.Equal(t, []string{"lease"}, handlerNames(t, app.Servers[0]))

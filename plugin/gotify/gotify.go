@@ -15,6 +15,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/rs/zerolog"
 )
 
 type (
@@ -31,7 +32,7 @@ type (
 
 		next          plugin.Handler
 		notifications []*notification
-		l             log.Logger
+		l             zerolog.Logger
 		wg            sync.WaitGroup // used in tests to wait until all notifications are sent
 	}
 
@@ -139,17 +140,17 @@ func (g *gotifyPlugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) e
 
 			title, body, err := n.Prepare(ctx, req, res)
 			if err != nil {
-				l.Warnf("failed to pepare notification: %s", err.Error())
+				l.Warn().Msgf("failed to pepare notification: %s", err.Error())
 				return
 			}
 
 			if body != "" {
-				l.Debugf("sending notification: %s\n%s", title, body)
+				l.Debug().Msgf("sending notification: %s\n%s", title, body)
 
 				if err := n.Send(title, body); err != nil {
-					l.Warnf("failed to send notification: %s", err.Error())
+					l.Warn().Msgf("failed to send notification: %s", err.Error())
 				} else {
-					l.Debugf("notification sent via %s: %s\n%s", n.srv, title, body)
+					l.Debug().Msgf("notification sent via %s: %s\n%s", n.srv, title, body)
 				}
 			}
 		}(n)

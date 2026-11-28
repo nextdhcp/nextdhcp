@@ -9,7 +9,9 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 	"github.com/nextdhcp/nextdhcp/core/utils/iface"
+	"github.com/rs/zerolog"
 )
 
 // DefaultConfigFile is the name of the Dhcpfile that is loaded if no other
@@ -70,6 +72,10 @@ func (ServerType) Setup(serverBlocks []caddyfile.ServerBlock, _ map[string]any) 
 			},
 		},
 	}
+
+	// NextDHCP logs with zerolog, which also logs what Caddy logs. The log
+	// directive sets another level.
+	caddylog.Configure(cfg, zerolog.InfoLevel)
 
 	app := new(App)
 	for i, sb := range serverBlocks {

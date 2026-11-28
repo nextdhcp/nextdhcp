@@ -126,15 +126,15 @@ func (a *staticAddress) refuseOthers(ctx context.Context, cli lease.Client) erro
 	}
 
 	l := dhcpLog.With(ctx, a.db.l)
-	l.Debugf("IP %s statically reserved for client %s", a.r.IP, owner)
+	l.Debug().Msgf("IP %s statically reserved for client %s", a.r.IP, owner)
 
 	// Database refuses clients without hardware address, whose empty client
 	// ID would delete the entry of any client
 	switch err := a.db.store.Delete(ctx, a.r.IP, id); {
 	case err == nil:
-		l.Infof("removed lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, id, owner)
+		l.Info().Msgf("removed lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, id, owner)
 	case !IsNotFound(err) && !errors.Is(err, ErrClientMismatch):
-		l.Errorf("failed to remove lease or reservation of statically reserved IP %s: %s", a.r.IP, err.Error())
+		l.Error().Msgf("failed to remove lease or reservation of statically reserved IP %s: %s", a.r.IP, err.Error())
 	}
 
 	return lease.ErrAddressReserved
@@ -160,11 +160,11 @@ func (a *staticAddress) prepare(ctx context.Context) error {
 
 	l := dhcpLog.With(ctx, a.db.l)
 	if leased && time.Now().Before(expiration) {
-		l.Debugf("static IP %s of client %s is leased to client %s until %s", a.r.IP, owner, existing, expiration)
+		l.Debug().Msgf("static IP %s of client %s is leased to client %s until %s", a.r.IP, owner, existing, expiration)
 		return lease.ErrAddressReserved
 	}
 
-	l.Warnf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
+	l.Warn().Msgf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
 
 	return a.db.deleteEntry(ctx, a.r.IP, existing)
 }
@@ -197,7 +197,8 @@ func (a *staticAddress) leaseTo(ctx context.Context, cli lease.Client, leaseTime
 	otherIP, _, _, err := a.db.store.FindByID(ctx, id)
 	switch {
 	case err == nil && !otherIP.Equal(a.r.IP):
-		dhcpLog.With(ctx, a.db.l).Infof("removing lease or reservation of IP %s for client %s: the client leases its static IP %s", otherIP, id, a.r.IP)
+		l := dhcpLog.With(ctx, a.db.l)
+		l.Info().Msgf("removing lease or reservation of IP %s for client %s: the client leases its static IP %s", otherIP, id, a.r.IP)
 
 		if err := a.db.deleteEntry(ctx, otherIP, id); err != nil {
 			return 0, err
@@ -235,7 +236,8 @@ func (a *staticAddress) release(ctx context.Context, cli *lease.Client) error {
 		return nil
 	}
 
-	dhcpLog.With(ctx, a.db.l).Infof("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
+	l := dhcpLog.With(ctx, a.db.l)
+	l.Info().Msgf("removing lease or reservation of IP %s for client %s: the IP is statically reserved for client %s", a.r.IP, existing, owner)
 
 	return a.db.deleteEntry(ctx, a.r.IP, existing)
 }

@@ -11,13 +11,13 @@ import (
 
 func TestLogSetup(t *testing.T) {
 	levels := map[string]string{
-		"debug":   "DEBUG",
-		"info":    "INFO",
-		"warn":    "WARN",
-		"warning": "WARN",
-		"error":   "ERROR",
-		"fatal":   "FATAL",
-		"DEBUG":   "DEBUG",
+		"debug":   "debug",
+		"info":    "info",
+		"warn":    "warn",
+		"warning": "warn",
+		"error":   "error",
+		"fatal":   "fatal",
+		"DEBUG":   "debug",
 	}
 
 	for level, expected := range levels {
@@ -26,7 +26,12 @@ func TestLogSetup(t *testing.T) {
 
 		require.NotNil(t, c.Config.Logging, level)
 		require.Contains(t, c.Config.Logging.Logs, caddy.DefaultLoggerName, level)
-		assert.Equal(t, expected, c.Config.Logging.Logs[caddy.DefaultLoggerName].Level, level)
+
+		// zerolog logs what is logged to Caddy's default log, from the level
+		// on, instead of Caddy
+		l := c.Config.Logging.Logs[caddy.DefaultLoggerName]
+		assert.JSONEq(t, `{"output": "discard"}`, string(l.WriterRaw), level)
+		assert.JSONEq(t, `{"module": "zerolog", "level": "`+expected+`"}`, string(l.CoreRaw), level)
 	}
 
 	for _, input := range []string{

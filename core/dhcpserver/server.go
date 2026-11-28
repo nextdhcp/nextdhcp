@@ -16,15 +16,16 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/lease/storage"
 	"github.com/nextdhcp/nextdhcp/core/log"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 	"github.com/nextdhcp/nextdhcp/core/socket"
 	"github.com/nextdhcp/nextdhcp/core/utils/iface"
 	"github.com/nextdhcp/nextdhcp/plugin"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog"
 )
 
 // listenDHCP opens the connection a server receives requests on and sends
 // responses through. Tests replace it so they don't need raw sockets.
-var listenDHCP = func(l log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
+var listenDHCP = func(l zerolog.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
 	return socket.ListenDHCP(l, ip, ifc)
 }
 
@@ -77,7 +78,7 @@ type Server struct {
 	iface  net.Interface        // the interface the subnet is served on
 	store  storage.LeaseStorage // the storage of the lease database
 	chain  plugin.Handler       // the first handler of the chain
-	logger *zap.SugaredLogger
+	logger zerolog.Logger
 	failed chan<- error // receives the error that stops the server from serving
 
 	conn     net.PacketConn
@@ -90,7 +91,7 @@ type Server struct {
 // and loads the handler chain. Handlers can get the server from the context
 // they are provisioned with, using ServerFromContext.
 func (s *Server) Provision(ctx caddy.Context) error {
-	s.logger = ctx.Logger().Sugar()
+	s.logger = caddylog.Logger(ctx)
 
 	ip, ipNet, err := iface.ByNameOrCIDR(s.Subnet)
 	if err != nil {
@@ -174,19 +175,19 @@ func (s *Server) buildMiddlewareChain(handlers []plugin.Middleware) {
 		// if it's a DHCPREQUEST that we didn't handle yet we will send
 		// DHCPNAK
 		if Request(req) {
-			l.Warnf("unhandled DHCPREQUEST, responding with DHCPNAK")
+			l.Warn().Msg("unhandled DHCPREQUEST, responding with DHCPNAK")
 			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
 			return nil
 		}
 
-		l.Infof("%s from %s not handled. dropping", req.MessageType().String(), peer)
+		l.Info().Msgf("%s from %s not handled. dropping", req.MessageType().String(), peer)
 		return ErrNoResponse
 	}
 
 	var chain plugin.Handler = endOfChainHandler
 	for i := len(handlers) - 1; i >= 0; i-- {
 		chain = handlers[i].Wrap(chain)
-		s.logger.Debugf("plugin (%d) %s setup", i, chain.Name())
+		s.logger.Debug().Msgf("plugin (%d) %s setup", i, chain.Name())
 	}
 
 	s.chain = chain
@@ -211,7 +212,7 @@ func (s *Server) start() error {
 		}
 
 		err = fmt.Errorf("stopped serving subnet %s: %w", s.Network.String(), err)
-		s.logger.Error(err.Error())
+		s.logger.Error().Msg(err.Error())
 		s.reportFailure(err)
 	}()
 
@@ -242,7 +243,7 @@ func (s *Server) removeStaticConflicts() {
 	}
 
 	if err := db.RemoveStaticConflicts(context.Background()); err != nil {
-		s.logger.Errorf("failed to remove leases of static IP addresses of subnet %s: %s", s.Network.String(), err.Error())
+		s.logger.Error().Msgf("failed to remove leases of static IP addresses of subnet %s: %s", s.Network.String(), err.Error())
 	}
 }
 
@@ -270,7 +271,7 @@ func (s *Server) ServePacket(c net.PacketConn) error {
 		byteLen, addr, err := c.ReadFrom(payload)
 
 		if byteLen > 0 {
-			s.logger.Debugf("serving request from %s", addr)
+			s.logger.Debug().Msgf("serving request from %s", addr)
 			s.dhcpWg.Add(1)
 			go s.serveAndLogDHCPv4(c, payload[:byteLen], addr)
 		}
@@ -292,15 +293,15 @@ func (s *Server) serveAndLogDHCPv4(c net.PacketConn, payload []byte, addr net.Ad
 	// In any case we must not panic while serving requests
 	defer func() {
 		if x := recover(); x != nil {
-			s.logger.Infof("Caught panic while serving a DHCP request from %s", addr.String())
-			s.logger.Infof("\t%v", x)
-			s.logger.Infof("%s", debug.Stack())
+			s.logger.Info().Msgf("Caught panic while serving a DHCP request from %s", addr.String())
+			s.logger.Info().Msgf("\t%v", x)
+			s.logger.Info().Msgf("%s", debug.Stack())
 		}
 	}()
 
 	err := s.serveDHCPv4(c, payload, addr)
 	if err != nil {
-		s.logger.Warnf("failed to serve request from %s: %s", addr.String(), err.Error())
+		s.logger.Warn().Msgf("failed to serve request from %s: %s", addr.String(), err.Error())
 	}
 }
 
@@ -330,7 +331,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 	// if it matches our server IP and drop the request entirely if not
 	reqID := msg.ServerIdentifier()
 	if reqID != nil && !reqID.IsUnspecified() && reqID.String() != cfg.IP.String() {
-		s.logger.Debugf("ignoring packet with incorrect server ID %q from %s", reqID, msg.ClientHWAddr)
+		s.logger.Debug().Msgf("ignoring packet with incorrect server ID %q from %s", reqID, msg.ClientHWAddr)
 		return nil
 	}
 	// make sure to add the server identifier option to all DHCP messages
@@ -349,7 +350,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 		resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNone))
 	}
 
-	cfg.logger.Debugf("-> %s from %s (%s)", msg.MessageType(), addr, msg.HostName())
+	cfg.logger.Debug().Msgf("-> %s from %s (%s)", msg.MessageType(), addr, msg.HostName())
 
 	ctx := context.Background()
 	ctx = lease.WithDatabase(ctx, cfg.Database)
@@ -367,7 +368,7 @@ func (s *Server) serveDHCPv4(c net.PacketConn, payload []byte, addr net.Addr) er
 
 	addr = updateConnectionAddresses(ctx, addr, cfg, msg, resp)
 
-	cfg.logger.Debugf("<- %s to %s (%s)", resp.MessageType(), addr, msg.HostName())
+	cfg.logger.Debug().Msgf("<- %s to %s (%s)", resp.MessageType(), addr, msg.HostName())
 
 	response := resp.ToBytes()
 	_, err = c.WriteTo(response, addr)
@@ -409,14 +410,14 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Server, 
 			// it doesn't accept unicasts to yiaddr, which is zero
 			if Nak(resp) {
 				a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
-				l.Debugf("broadcasting to %s (%s) (NAK)", a.RawAddr.IP, a.RawAddr.MAC)
+				l.Debug().Msgf("broadcasting to %s (%s) (NAK)", a.RawAddr.IP, a.RawAddr.MAC)
 				return addr
 			}
 
 			if req.ClientIPAddr != nil && !req.ClientIPAddr.IsUnspecified() {
 				if Offer(resp) || Ack(resp) {
 					a.RawAddr.IP = req.ClientIPAddr
-					l.Debugf("unicasting to ciaddr %s (%s)", req.ClientIPAddr, a.RawAddr.MAC)
+					l.Debug().Msgf("unicasting to ciaddr %s (%s)", req.ClientIPAddr, a.RawAddr.MAC)
 					return a
 				}
 			}
@@ -424,18 +425,18 @@ func updateConnectionAddresses(ctx context.Context, addr net.Addr, cfg *Server, 
 			if req.ClientIPAddr == nil || req.ClientIPAddr.IsUnspecified() {
 				if req.IsBroadcast() {
 					a.RawAddr.IP = net.IP{0xff, 0xff, 0xff, 0xff}
-					l.Debugf("broadcasting to %s (%s) (broadcast bit set)", a.RawAddr.IP, a.RawAddr.MAC)
+					l.Debug().Msgf("broadcasting to %s (%s) (broadcast bit set)", a.RawAddr.IP, a.RawAddr.MAC)
 				} else {
 					a.RawAddr.IP = resp.YourIPAddr
-					l.Debugf("unicasting to yiaddr %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
+					l.Debug().Msgf("unicasting to yiaddr %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
 				}
 
 				return addr
 			}
 
-			l.Debugf("sending (unmodified) response to %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
+			l.Debug().Msgf("sending (unmodified) response to %s (%s)", a.RawAddr.IP, a.RawAddr.MAC)
 		} else {
-			l.Warnf("DHCP relay agents are not yet supported. giaddr=%s", req.GatewayIPAddr)
+			l.Warn().Msgf("DHCP relay agents are not yet supported. giaddr=%s", req.GatewayIPAddr)
 			return addr
 		}
 	}

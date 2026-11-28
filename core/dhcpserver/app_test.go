@@ -15,7 +15,7 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/lease"
-	"github.com/nextdhcp/nextdhcp/core/log"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -218,7 +218,7 @@ func (c *fakeConn) request(t *testing.T, client net.HardwareAddr, ip net.IP) *dh
 // Dhcpfile, through a connection that doesn't need raw socket privileges.
 func TestServe(t *testing.T) {
 	conn := newFakeConn()
-	app := provisionApp(t, servingDhcpfile, func(_ log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
+	app := provisionApp(t, servingDhcpfile, func(_ zerolog.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error) {
 		assert.Equal(t, "127.0.0.1", ip.String())
 		assert.Equal(t, "lo", ifc.Name)
 		return conn, nil
@@ -284,7 +284,7 @@ func TestServe(t *testing.T) {
 
 // provisionApp provisions an app adapted from dhcpfile, whose servers open
 // their connection with listen. The app is cleaned up when the test ends.
-func provisionApp(t *testing.T, dhcpfile string, listen func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error)) *dhcpserver.App {
+func provisionApp(t *testing.T, dhcpfile string, listen func(zerolog.Logger, net.IP, *net.Interface) (net.PacketConn, error)) *dhcpserver.App {
 	t.Helper()
 
 	t.Cleanup(dhcpserver.SetListenDHCP(listen))
@@ -318,7 +318,7 @@ func startApp(t *testing.T, dhcpfile string) *fakeConn {
 func startAppWithConn(t *testing.T, dhcpfile string, conn *fakeConn) *dhcpserver.App {
 	t.Helper()
 
-	app := provisionApp(t, dhcpfile, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+	app := provisionApp(t, dhcpfile, func(zerolog.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
 		return conn, nil
 	})
 
@@ -530,7 +530,7 @@ func TestStaticAddressReserved(t *testing.T) {
 
 		// NextDHCP fails to start with the address assigned to a client
 		require.True(t, t.Run("static", func(t *testing.T) {
-			app := provisionApp(t, fmt.Sprintf(dhcpfile, database, static), func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+			app := provisionApp(t, fmt.Sprintf(dhcpfile, database, static), func(zerolog.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
 				return nil, assert.AnError
 			})
 			assert.ErrorIs(t, app.Start(), assert.AnError)
@@ -846,7 +846,7 @@ func TestStartFailure(t *testing.T) {
 lo {
 	database memory
 }
-`, func(log.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
+`, func(zerolog.Logger, net.IP, *net.Interface) (net.PacketConn, error) {
 		calls++
 		if calls == 1 {
 			return first, nil

@@ -1,58 +1,54 @@
+// Package log has the fields that NextDHCP adds to what it logs about a DHCP
+// request. NextDHCP logs with zerolog.
 package log
 
 import (
 	"context"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog"
 )
 
 type requestFieldsKey struct{}
 
-// AddRequestFields returns a new context.Context that has the given request assigned
-func AddRequestFields(parent context.Context, req *dhcpv4.DHCPv4) context.Context {
-	fields := []any{
-		"hwaddr", req.ClientHWAddr.String(),
-		"xid", req.TransactionID.String(),
-		"secs", req.NumSeconds,
-		"msgtype", req.MessageType().String(),
-	}
-
-	if req.HostName() != "" {
-		fields = append(fields, "hostname", req.HostName())
-	}
-
-	return context.WithValue(parent, requestFieldsKey{}, fields)
+// requestFields are the fields that are logged about a DHCP request.
+type requestFields struct {
+	hwaddr   string
+	xid      string
+	secs     uint16
+	msgtype  string
+	hostname string
 }
 
-// With add field in ctx to log
-func With(ctx context.Context, parent Logger) Logger {
-	l, ok := parent.(*zap.SugaredLogger)
+// AddRequestFields returns a new context.Context that has the given request assigned
+func AddRequestFields(parent context.Context, req *dhcpv4.DHCPv4) context.Context {
+	return context.WithValue(parent, requestFieldsKey{}, &requestFields{
+		hwaddr:   req.ClientHWAddr.String(),
+		xid:      req.TransactionID.String(),
+		secs:     req.NumSeconds,
+		msgtype:  req.MessageType().String(),
+		hostname: req.HostName(),
+	})
+}
+
+// With returns a logger that logs what parent does, with the fields of the
+// request that is assigned to ctx, see AddRequestFields. It returns parent if
+// no request is assigned to ctx.
+func With(ctx context.Context, parent zerolog.Logger) zerolog.Logger {
+	fields, ok := ctx.Value(requestFieldsKey{}).(*requestFields)
 	if !ok {
 		return parent
 	}
 
-	val := ctx.Value(requestFieldsKey{})
-	if val != nil {
-		if fields, ok := val.([]any); ok {
-			return l.With(fields...)
-		}
+	c := parent.With().
+		Str("hwaddr", fields.hwaddr).
+		Str("xid", fields.xid).
+		Uint16("secs", fields.secs).
+		Str("msgtype", fields.msgtype)
+
+	if fields.hostname != "" {
+		c = c.Str("hostname", fields.hostname)
 	}
 
-	return l
-}
-
-// Logger is used by NextDHCP plugins to log important information
-type Logger interface {
-	// Debugf prints a debug message
-	Debugf(msg string, args ...interface{})
-
-	// Infof prints a info message
-	Infof(msg string, args ...interface{})
-
-	// Warnf prints a warning message
-	Warnf(msg string, args ...interface{})
-
-	// Errorf prints an error message
-	Errorf(msg string, args ...interface{})
+	return c.Logger()
 }

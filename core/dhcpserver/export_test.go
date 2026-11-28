@@ -4,12 +4,12 @@ import (
 	"context"
 	"net"
 
-	"github.com/nextdhcp/nextdhcp/core/log"
+	"github.com/rs/zerolog"
 )
 
 // SetListenDHCP replaces the function servers open their connection with,
 // and returns a function that restores it.
-func SetListenDHCP(f func(l log.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error)) (restore func()) {
+func SetListenDHCP(f func(l zerolog.Logger, ip net.IP, ifc *net.Interface) (net.PacketConn, error)) (restore func()) {
 	orig := listenDHCP
 	listenDHCP = f
 

@@ -12,6 +12,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/lease"
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/rs/zerolog"
 )
 
 // Plugin allows assignment of static IP addresses to clients
@@ -23,7 +24,7 @@ type Plugin struct {
 
 	Config *dhcpserver.Server `json:"-"`
 	Next   plugin.Handler     `json:"-"`
-	L      log.Logger         `json:"-"`
+	L      zerolog.Logger     `json:"-"`
 
 	owners map[netip.Addr]lease.ClientID // the client of each IP address
 }
@@ -65,7 +66,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 				return s.Next.ServeDHCP(ctx, req, res)
 			}
 
-			l.Warnf("%s: denying request for IP %s", req.ClientHWAddr.String(), reqIP)
+			l.Warn().Msgf("%s: denying request for IP %s", req.ClientHWAddr.String(), reqIP)
 
 			res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
 			return nil
@@ -79,17 +80,17 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 		leaseTime, err := s.lease(ctx, static, cli, res.IPAddressLeaseTime(time.Hour))
 		switch {
 		case errors.Is(err, lease.ErrAddressReserved):
-			l.Infof("%s: static IP %s is still leased to another client", req.ClientHWAddr, static)
+			l.Info().Msgf("%s: static IP %s is still leased to another client", req.ClientHWAddr, static)
 			return s.Next.ServeDHCP(ctx, req, res)
 		case err != nil:
-			l.Warnf("%s: failed to store the lease of static IP %s: %s", req.ClientHWAddr, static, err.Error())
+			l.Warn().Msgf("%s: failed to store the lease of static IP %s: %s", req.ClientHWAddr, static, err.Error())
 		default:
 			res.UpdateOption(dhcpv4.OptIPAddressLeaseTime(leaseTime))
 		}
 
 		res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
 	} else if s.inUse(ctx, static, cli) {
-		l.Infof("%s: static IP %s is still leased to another client", req.ClientHWAddr, static)
+		l.Info().Msgf("%s: static IP %s is still leased to another client", req.ClientHWAddr, static)
 		return s.Next.ServeDHCP(ctx, req, res)
 	}
 
@@ -101,7 +102,7 @@ func (s *Plugin) ServeDHCP(ctx context.Context, req, res *dhcpv4.DHCPv4) error {
 		res.UpdateOption(dhcpv4.OptSubnetMask(s.Config.Network.Mask))
 	}
 
-	l.Infof("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
+	l.Info().Msgf("%s: serving static IP %s (%s)", req.ClientHWAddr, res.YourIPAddr, req.MessageType())
 	return nil
 }
 
@@ -132,10 +133,10 @@ func (s *Plugin) refuseStaticOfOther(ctx context.Context, req, res *dhcpv4.DHCPv
 
 	_, err := s.Config.Database.Lease(ctx, ip, lease.NewClient(req.ClientHWAddr), res.IPAddressLeaseTime(time.Hour), false)
 	if err != nil && !errors.Is(err, lease.ErrAddressReserved) {
-		l.Warnf("%s: failed to end the lease of IP %s, the static IP of client %s: %s", req.ClientHWAddr, ip, owner, err.Error())
+		l.Warn().Msgf("%s: failed to end the lease of IP %s, the static IP of client %s: %s", req.ClientHWAddr, ip, owner, err.Error())
 	}
 
-	l.Infof("%s: denying request for IP %s, the static IP of client %s", req.ClientHWAddr, ip, owner)
+	l.Info().Msgf("%s: denying request for IP %s, the static IP of client %s", req.ClientHWAddr, ip, owner)
 	res.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeNak))
 
 	return true
@@ -152,7 +153,8 @@ func (s *Plugin) inUse(ctx context.Context, ip net.IP, cli lease.Client) bool {
 	}
 
 	if err != nil && !errors.Is(err, lease.ErrAddressReserved) {
-		log.With(ctx, s.L).Warnf("%s: failed to check whether static IP %s is leased to another client: %s", cli.HwAddr, ip, err.Error())
+		l := log.With(ctx, s.L)
+		l.Warn().Msgf("%s: failed to check whether static IP %s is leased to another client: %s", cli.HwAddr, ip, err.Error())
 	}
 
 	return errors.Is(err, lease.ErrAddressReserved)
@@ -187,7 +189,7 @@ func (s *Plugin) handOver(ctx context.Context, ip net.IP, cli lease.Client) bool
 	used, err := probe(ctx, ip)
 	switch {
 	case err != nil:
-		l.Warnf("%s: failed to check whether a device uses static IP %s, which is leased to another client: %s", cli.HwAddr, ip, err.Error())
+		l.Warn().Msgf("%s: failed to check whether a device uses static IP %s, which is leased to another client: %s", cli.HwAddr, ip, err.Error())
 		return false
 	case used:
 		return false
@@ -196,11 +198,11 @@ func (s *Plugin) handOver(ctx context.Context, ip net.IP, cli lease.Client) bool
 	// release the lease without a client, as it belongs to another client
 	// than cli
 	if err := s.Config.Database.Release(ctx, ip, nil); err != nil {
-		l.Warnf("%s: failed to end another client's lease of static IP %s, which no device uses: %s", cli.HwAddr, ip, err.Error())
+		l.Warn().Msgf("%s: failed to end another client's lease of static IP %s, which no device uses: %s", cli.HwAddr, ip, err.Error())
 		return false
 	}
 
-	l.Infof("%s: ended another client's lease of static IP %s, which no device uses", cli.HwAddr, ip)
+	l.Info().Msgf("%s: ended another client's lease of static IP %s, which no device uses", cli.HwAddr, ip)
 	return true
 }
 

@@ -1,11 +1,11 @@
 package events
 
 import (
-	"log"
 	"runtime/debug"
 	"sync"
 
 	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/rs/zerolog/log"
 )
 
 // EventName is the name of an event
@@ -56,7 +56,7 @@ func EmitEvent(event EventName, info interface{}) {
 	registeredHooks.Range(func(k, v interface{}) bool {
 		err := v.(EventHook)(event, info)
 		if err != nil {
-			log.Printf("error on '%s' hook: %v", k.(string), err)
+			log.Error().Msgf("error on '%s' hook: %v", k.(string), err)
 		}
 		return true
 	})
@@ -65,8 +65,8 @@ func EmitEvent(event EventName, info interface{}) {
 // EmitLeaseEvent emits a lease-based event
 func EmitLeaseEvent(event EventName, l *lease.Lease) {
 	if _, ok := validLeaseEvents[event]; !ok {
-		log.Println("invalid lease event type")
-		log.Println(string(debug.Stack()))
+		log.Error().Msg("invalid lease event type")
+		log.Error().Msg(string(debug.Stack()))
 		return
 	}
 

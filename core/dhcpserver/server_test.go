@@ -7,9 +7,9 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/socket"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 // TestUpdateConnectionAddresses checks where responses to clients on the
@@ -27,7 +27,7 @@ func TestUpdateConnectionAddresses(t *testing.T) {
 	srv := &Server{
 		IP:     serverIP,
 		iface:  net.Interface{Name: "eth0", HardwareAddr: serverMAC},
-		logger: zap.NewNop().Sugar(),
+		logger: zerolog.Nop(),
 	}
 
 	for name, tc := range map[string]struct {

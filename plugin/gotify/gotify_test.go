@@ -13,9 +13,9 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 func TestNotificationPrepare(t *testing.T) {
@@ -167,7 +167,7 @@ func TestGotifyServeDHCP(t *testing.T) {
 				token:   "some-token-4",
 			},
 		},
-		l:    zap.NewNop().Sugar(),
+		l:    zerolog.Nop(),
 		next: test.ErrorHandler,
 	}
 
@@ -214,7 +214,7 @@ func TestGotifyNoResponse(t *testing.T) {
 				token: "some-token",
 			},
 		},
-		l: zap.NewNop().Sugar(),
+		l: zerolog.Nop(),
 		next: test.HandlerFunc(func(context.Context, *dhcpv4.DHCPv4, *dhcpv4.DHCPv4) error {
 			return dhcpserver.ErrNoResponse
 		}),

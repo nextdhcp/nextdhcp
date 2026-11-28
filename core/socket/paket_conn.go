@@ -9,8 +9,8 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/mdlayher/packet"
-	"github.com/nextdhcp/nextdhcp/core/log"
 	interfaces "github.com/nextdhcp/nextdhcp/core/utils/iface"
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -30,7 +30,7 @@ var (
 
 // ListenDHCP starts listening for DHCP requests on the given IP and interface
 // It opens a UDP and a AF_PACKET socket for communication
-func ListenDHCP(l log.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, error) {
+func ListenDHCP(l zerolog.Logger, ip net.IP, iface *net.Interface) (net.PacketConn, error) {
 	// If not interface is provided try to lookup the correct one
 	if iface == nil {
 		var err error
@@ -74,7 +74,7 @@ type DHCPConn struct {
 	ip     net.IP         // the listening IP for the udp PacketConn
 	wg     sync.WaitGroup
 	closed atomic.Bool // set once Close has been called
-	l      log.Logger
+	l      zerolog.Logger
 }
 
 // Close will close both the UDP and the AF_PACKET socket and
@@ -151,7 +151,7 @@ func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 			srcMAC = r.Local.MAC
 		}
 
-		p.l.Debugf("[socket] sending directed (raw) unicast %s (%s) -> %s (%s)", srcIP, srcMAC, r.IP, r.MAC)
+		p.l.Debug().Msgf("[socket] sending directed (raw) unicast %s (%s) -> %s (%s)", srcIP, srcMAC, r.IP, r.MAC)
 
 		// FIXME(ppacher): Ports are currenty hardcoded in PreparePacket
 		payload, err := PreparePacket(srcMAC, srcIP, r.MAC, r.IP, b)
@@ -170,7 +170,7 @@ func (p *DHCPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		return len(b), nil
 	}
 
-	p.l.Debugf("[socket] sending (routed) UDP response %s -> %s", p.udp.LocalAddr(), addr)
+	p.l.Debug().Msgf("[socket] sending (routed) UDP response %s -> %s", p.udp.LocalAddr(), addr)
 	return p.udp.WriteTo(b, addr)
 }
 

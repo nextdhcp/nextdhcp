@@ -13,6 +13,7 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/log"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/rs/zerolog"
 )
 
 type (
@@ -48,7 +49,7 @@ type (
 		Publish []PublishConfig `json:"publish,omitempty"`
 
 		configs []*mqttConfig
-		l       log.Logger
+		l       zerolog.Logger
 		next    plugin.Handler
 		wg      sync.WaitGroup // used in tests to wait until all messages are published
 	}
@@ -84,35 +85,35 @@ func (m *mqttPlugin) ServeDHCP(ctx context.Context, req *dhcpv4.DHCPv4, resp *dh
 
 			match, err := cfg.Match(ctx, req)
 			if err != nil {
-				l.Errorf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
+				l.Error().Msgf("matching failed for MQTT plugin with name %q: %s", cfg.name, err.Error())
 				return
 			}
 
 			if match {
 				cli, qos, err := m.getClient(cfg)
 				if err != nil {
-					l.Errorf("failed to get MQTT connection for %q: %s", cfg.name, err.Error())
+					l.Error().Msgf("failed to get MQTT connection for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				topic, err := cfg.topic(ctx, req, nil)
 				if err != nil {
-					l.Errorf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
+					l.Error().Msgf("failed to get MQTT topic for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				payload, err := cfg.payload(ctx, req, nil)
 				if err != nil {
-					l.Errorf("failed to get MQTT payload for %q: %s", cfg.name, err.Error())
+					l.Error().Msgf("failed to get MQTT payload for %q: %s", cfg.name, err.Error())
 					return
 				}
 
 				if token := cli.Publish(topic, byte(qos), false, payload); token.Wait() && token.Error() != nil {
-					l.Errorf("failed to publish MQTT message for %q: %s", cfg.name, token.Error())
+					l.Error().Msgf("failed to publish MQTT message for %q: %s", cfg.name, token.Error())
 					return
 				}
 
-				l.Debugf("published MQTT message to topic %s", topic)
+				l.Debug().Msgf("published MQTT message to topic %s", topic)
 			}
 		}(cfg)
 	}
@@ -143,7 +144,7 @@ var errConnectionClosed = errors.New("MQTT connection already closed")
 
 // client returns the connected client, and connects first if there is none.
 // It doesn't hold conn.l while it connects, so close doesn't wait for that.
-func (conn *mqttConnection) client(l log.Logger) (mqtt.Client, error) {
+func (conn *mqttConnection) client(l zerolog.Logger) (mqtt.Client, error) {
 	for {
 		conn.l.Lock()
 		switch {
@@ -206,7 +207,7 @@ func (conn *mqttConnection) close() {
 	}
 }
 
-func (conn *mqttConnection) open(l log.Logger) (mqtt.Client, error) {
+func (conn *mqttConnection) open(l zerolog.Logger) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions()
 
 	for _, b := range conn.broker {
@@ -238,11 +239,11 @@ func (conn *mqttConnection) open(l log.Logger) (mqtt.Client, error) {
 		servers = append(servers, s.String())
 	}
 
-	l.Debugf("connecting to MQTT brokers at %s", strings.Join(servers, ", "))
+	l.Debug().Msgf("connecting to MQTT brokers at %s", strings.Join(servers, ", "))
 	if token := cli.Connect(); token.Wait() && token.Error() != nil {
 		return nil, token.Error()
 	}
-	l.Infof("connected to MQTT brokers at %s", strings.Join(servers, ", "))
+	l.Info().Msgf("connected to MQTT brokers at %s", strings.Join(servers, ", "))
 
 	return cli, nil
 }

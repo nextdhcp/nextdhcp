@@ -8,9 +8,9 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 func TestBootfileServeDHCP(t *testing.T) {
@@ -34,7 +34,7 @@ func TestBootfileServeDHCP(t *testing.T) {
 			nextCalled := false
 			p := &Plugin{
 				Bootfile: map[BootMode]string{BIOS: "pxelinux.0", UEFI: "bootx64.efi"},
-				L:        zap.NewNop().Sugar(),
+				L:        zerolog.Nop(),
 				Next: test.HandlerFunc(func(context.Context, *dhcpv4.DHCPv4, *dhcpv4.DHCPv4) error {
 					nextCalled = true
 					return nil

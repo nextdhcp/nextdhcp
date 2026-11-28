@@ -10,6 +10,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/lease"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -42,7 +43,7 @@ func (s *Plugin) Provision(ctx caddy.Context) error {
 		return fmt.Errorf("static requires a lease database with static reservations, which %T doesn't support", s.Config.Database)
 	}
 
-	s.L = ctx.Logger().Sugar()
+	s.L = caddylog.Logger(ctx)
 
 	// ServeDHCP looks clients up by the canonical (lower case) form of their
 	// MAC address, so store the addresses by that form

@@ -7,8 +7,9 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"github.com/nextdhcp/nextdhcp/core/log"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/rs/zerolog"
 )
 
 func init() {
@@ -24,7 +25,7 @@ type Plugin struct {
 	Bootfile map[BootMode]string `json:"bootfile,omitempty"`
 
 	Next plugin.Handler `json:"-"`
-	L    log.Logger     `json:"-"`
+	L    zerolog.Logger `json:"-"`
 }
 
 // CaddyModule returns the Caddy module information.
@@ -41,7 +42,7 @@ func (p *Plugin) Provision(ctx caddy.Context) error {
 		p.Bootfile = make(map[BootMode]string)
 	}
 
-	p.L = ctx.Logger().Sugar()
+	p.L = caddylog.Logger(ctx)
 
 	return nil
 }

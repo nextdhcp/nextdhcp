@@ -12,11 +12,13 @@ require (
 	github.com/mdlayher/packet v1.2.0
 	github.com/ppacher/glua-loop v0.0.0-20190823064734-05c43452ea18
 	github.com/ppacher/webthings-mqtt-gateway v0.0.0-20190827095024-c29a6f0aa947
+	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7
 	github.com/yuin/gopher-lua v1.1.2
 	go.etcd.io/bbolt v1.5.0
 	go.uber.org/zap v1.28.0
+	golang.org/x/term v0.48.0
 )
 
 require (
@@ -53,6 +55,8 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
+	github.com/mattn/go-colorable v0.1.15 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mdlayher/socket v0.8.0 // indirect
 	github.com/mholt/acmez/v3 v3.1.7 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
@@ -82,7 +86,6 @@ require (
 	golang.org/x/net v0.63.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
-	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect

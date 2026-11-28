@@ -9,6 +9,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/core/replacer"
 	"github.com/nextdhcp/nextdhcp/plugin"
@@ -51,7 +52,7 @@ func (*gotifyPlugin) CaddyModule() caddy.ModuleInfo {
 
 // Provision sets up the configured notifications.
 func (g *gotifyPlugin) Provision(ctx caddy.Context) error {
-	g.l = ctx.Logger().Sugar()
+	g.l = caddylog.Logger(ctx)
 	g.notifications = nil
 
 	for _, cfg := range g.Notifications {
@@ -89,7 +90,7 @@ func (g *gotifyPlugin) makeNotification(cfg NotificationConfig) (*notification, 
 	if cfg.Message != nil {
 		m := *cfg.Message
 		n.msg = func(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
-			g.l.Debugf("replacing message \"%s\"", m)
+			g.l.Debug().Msgf("replacing message \"%s\"", m)
 
 			rep := replacer.NewReplacer(ctx, req)
 			return rep.Replace(m), nil
@@ -99,7 +100,7 @@ func (g *gotifyPlugin) makeNotification(cfg NotificationConfig) (*notification, 
 	if cfg.Title != nil {
 		t := *cfg.Title
 		n.title = func(ctx context.Context, req, res *dhcpv4.DHCPv4) (string, error) {
-			g.l.Debugf("replacing title \"%s\"", t)
+			g.l.Debug().Msgf("replacing title \"%s\"", t)
 			rep := replacer.NewReplacer(ctx, req)
 			return rep.Replace(t), nil
 		}

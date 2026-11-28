@@ -13,6 +13,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 	"github.com/nextdhcp/nextdhcp/core/matcher"
 	"github.com/nextdhcp/nextdhcp/core/replacer"
 	"github.com/nextdhcp/nextdhcp/plugin"
@@ -90,7 +91,7 @@ func (*mqttPlugin) CaddyModule() caddy.ModuleInfo {
 
 // Provision sets up the configured messages.
 func (m *mqttPlugin) Provision(ctx caddy.Context) error {
-	m.l = ctx.Logger().Sugar()
+	m.l = caddylog.Logger(ctx)
 	m.configs = nil
 
 	for _, pub := range m.Publish {
@@ -135,8 +136,8 @@ func (m *mqttPlugin) Provision(ctx caddy.Context) error {
 			// to publish on MQTT. Is this really required? We could also just provide an "exec" plugin
 			// that calls an external binary/script and use that for publishing to MQTT.
 			//
-			m.l.Warnf("payload-from: use of unofficial directive detected")
-			m.l.Warnf("payload-from: this directive may vanish in future versions.")
+			m.l.Warn().Msg("payload-from: use of unofficial directive detected")
+			m.l.Warn().Msg("payload-from: this directive may vanish in future versions.")
 
 			cfg.payload = getExecCmdStringFactory(pub.PayloadFrom)
 		}

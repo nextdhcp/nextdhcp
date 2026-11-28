@@ -5,6 +5,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 	"github.com/nextdhcp/nextdhcp/plugin"
 )
 
@@ -24,7 +25,7 @@ func (Plugin) CaddyModule() caddy.ModuleInfo {
 // Provision parses the configured options.
 func (p *Plugin) Provision(ctx caddy.Context) error {
 	p.Options = make(map[dhcpv4.OptionCode]dhcpv4.OptionValue)
-	p.L = ctx.Logger().Sugar()
+	p.L = caddylog.Logger(ctx)
 
 	for _, o := range p.OptionsRaw {
 		if err := p.parseOption(o.Name, o.Values); err != nil {

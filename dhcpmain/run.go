@@ -13,7 +13,7 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
-	"go.uber.org/zap"
+	"github.com/nextdhcp/nextdhcp/core/log/caddylog"
 )
 
 var conf string
@@ -25,22 +25,25 @@ func init() {
 // Run start NextDHCP and blocks until the server stopped
 func Run() {
 	flag.Parse()
+	setupLogging(os.Stderr)
 	caddy.TrapSignals()
 
-	// Caddy's logger also logs what the standard library's logger does, but
-	// at the info level, so log errors with it directly
+	// zerolog also logs what the standard library's logger does, but at the
+	// info level, so log errors with it directly
+	logger := caddylog.Default()
+
 	filename, body, err := readDhcpfile()
 	if err != nil {
-		caddy.Log().Fatal(err.Error())
+		logger.Fatal().Msg(err.Error())
 	}
 
 	cfgJSON, err := adapt(filename, body)
 	if err != nil {
-		caddy.Log().Fatal(err.Error())
+		logger.Fatal().Msg(err.Error())
 	}
 
 	if err := caddy.Load(cfgJSON, true); err != nil {
-		caddy.Log().Fatal(err.Error())
+		logger.Fatal().Msg(err.Error())
 	}
 
 	r := newReloader(cfgJSON)
@@ -66,9 +69,11 @@ func Run() {
 		select {}
 	}
 
-	caddy.Log().Error("exiting because NextDHCP stopped serving", zap.Error(err))
+	// log at the level of the configuration that was loaded
+	logger = caddylog.Default()
+	logger.Error().Err(err).Msg("exiting because NextDHCP stopped serving")
 	if err := caddy.Stop(); err != nil {
-		caddy.Log().Error("failed to stop", zap.Error(err))
+		logger.Error().Err(err).Msg("failed to stop")
 	}
 
 	os.Exit(1)
@@ -80,8 +85,9 @@ func adapt(filename string, body []byte) ([]byte, error) {
 	cfgJSON, warnings, err := dhcpserver.Adapter{}.Adapt(body, map[string]any{
 		"filename": filename,
 	})
+	logger := caddylog.Default()
 	for _, w := range warnings {
-		caddy.Log().Warn(w.String())
+		logger.Warn().Msg(w.String())
 	}
 
 	return cfgJSON, err

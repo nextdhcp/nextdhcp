@@ -82,7 +82,7 @@ func (p *Plugin) parseBootFileName(req *dhcpv4.DHCPv4) string {
 		bootFile = p.Bootfile[UEFI]
 	}
 
-	p.L.Debugf("receive client request with client_archs option: %s, dhcp server set boot-file-name as %s",
+	p.L.Debug().Msgf("receive client request with client_archs option: %s, dhcp server set boot-file-name as %s",
 		archs.String(), bootFile)
 	return bootFile
 }

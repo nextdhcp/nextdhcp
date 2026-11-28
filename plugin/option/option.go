@@ -6,12 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nextdhcp/nextdhcp/core/log"
-
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/nextdhcp/nextdhcp/core/dhcpserver"
 	"github.com/nextdhcp/nextdhcp/core/option"
 	"github.com/nextdhcp/nextdhcp/plugin"
+	"github.com/rs/zerolog"
 )
 
 // Plugin allows to configure and set arbitrary DHCP
@@ -23,7 +22,7 @@ type Plugin struct {
 
 	Next    plugin.Handler                           `json:"-"`
 	Options map[dhcpv4.OptionCode]dhcpv4.OptionValue `json:"-"`
-	L       log.Logger                               `json:"-"`
+	L       zerolog.Logger                           `json:"-"`
 }
 
 // OptionConfig configures a DHCP option.

@@ -10,10 +10,10 @@ import (
 	"github.com/nextdhcp/nextdhcp/core/lease/iprange"
 	"github.com/nextdhcp/nextdhcp/core/lease/mockdb"
 	"github.com/nextdhcp/nextdhcp/plugin/test"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 // TestRangeValidation checks that ranges must be of IPv4 addresses and must
@@ -55,7 +55,7 @@ func TestRangeValidation(t *testing.T) {
 func TestFindUnboundAddrWithoutHardwareAddress(t *testing.T) {
 	p := &RangePlugin{
 		Ranges: iprange.IPRanges{{Start: net.IP{10, 0, 0, 1}, End: net.IP{10, 0, 0, 100}}},
-		L:      zap.NewNop().Sugar(),
+		L:      zerolog.Nop(),
 	}
 
 	for _, requested := range []net.IP{nil, {10, 0, 0, 5}} {
